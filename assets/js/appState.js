@@ -9,9 +9,10 @@ export const state = {
     isLoggedIn: false,
     serviceJobs: [],
     alignmentQueue: [],
+    users: [],
     jobIdCounter: 100,
     aliIdCounter: 200,
-    MECHANICS: ['José','Wendell'],
+    MECHANICS: [], // A lista de mecânicos será populada dinamicamente
     TIRE_SHOP_MECHANIC: 'Borracheiro',
     // Firestore path constants will be filled in firebaseConfig and used as needed
 };

@@ -1,11 +1,12 @@
 import { initializeFirebase, auth } from './firebaseConfig.js';
 import { onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { handleLogin, handleLogout, postLoginSetup, ALIGNER_ROLE } from './auth.js';
-import { initMechanicsHandlers } from './mechanics.js';
 import { state } from './appState.js';
 import { initModalHandlers } from './modals.js';
 import { initAlignmentHandlers } from './alignment.js';
 import { initServiceFormHandler, initAlignmentFormHandler } from './services.js';
+import { initAdminHandlers } from './admin.js';
+import { initRemovalHandlers } from './removal.js';
 
 function showInitialUI() {
     // Esconde o conteúdo principal e mostra a tela de login por padrão
@@ -50,11 +51,12 @@ async function initApp() {
     document.getElementById('login-form').addEventListener('submit', handleLogin);
     window.handleLogout = handleLogout; // Expor para o onclick do HTML
 
-    initMechanicsHandlers();
     initModalHandlers();
     initAlignmentHandlers();
     initServiceFormHandler();
     initAlignmentFormHandler();
+    initAdminHandlers();
+    initRemovalHandlers();
 
     // Controle de Navegação por Abas
     document.querySelectorAll('.tab-button').forEach(button => {

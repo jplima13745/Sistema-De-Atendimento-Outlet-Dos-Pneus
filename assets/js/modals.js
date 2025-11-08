@@ -1,8 +1,9 @@
 
 import { state } from './appState.js';
 import { markServiceReady, finalizeJob, defineService } from './services.js';
+import { deleteUser } from './admin.js';
 import { updateAlignmentStatus } from './alignment.js';
-import { MANAGER_ROLE, ALIGNER_ROLE } from './auth.js';
+import { MANAGER_ROLE, ALIGNER_ROLE, VENDEDOR_ROLE } from './auth.js';
 
 export let currentJobToConfirm = { id: null, type: null, confirmAction: null, serviceType: null };
 
@@ -48,12 +49,25 @@ export function hideConfirmationModal() {
     currentJobToConfirm = { id: null, type: null, confirmAction: null, serviceType: null };
 }
 
+export function showDestructiveConfirmationModal(id, type, title, message, confirmAction) {
+    currentJobToConfirm = { id, type, confirmAction, serviceType: null };
+    const modal = document.getElementById('confirmation-modal');
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-message').innerHTML = message;
+    const confirmButton = document.getElementById('confirm-button');
+    confirmButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+    confirmButton.classList.add('bg-red-600', 'hover:bg-red-700');
+    confirmButton.textContent = 'Sim, Excluir';
+    modal.classList.remove('hidden');
+}
+
 function handleConfirm() {
     const { id, confirmAction, type, serviceType } = currentJobToConfirm;
     if (!id || !confirmAction) { hideConfirmationModal(); return; }
     if (confirmAction === "service") markServiceReady(id, serviceType); // 'GS' ou 'TS'
     if (confirmAction === "alignment") updateAlignmentStatus(id, 'Done'); // 'Done' vira 'Pronto para Pagamento'
     if (confirmAction === "finalize") finalizeJob(id, type); // 'service' ou 'alignment'
+    if (confirmAction === "deleteUser") deleteUser(id);
     hideConfirmationModal();
 }
 
@@ -81,7 +95,7 @@ function showFinalizeConfirmation(docId, collectionType) {
 export let currentJobToDefineId = null;
 
 function showDefineServiceModal(docId) {
-    if (state.currentUserRole !== MANAGER_ROLE) return;
+    if (state.currentUserRole !== MANAGER_ROLE && state.currentUserRole !== VENDEDOR_ROLE) return;
 
     const job = state.serviceJobs.find(j => j.id === docId);
     if (!job) {

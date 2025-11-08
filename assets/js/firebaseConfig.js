@@ -8,6 +8,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   getDocs,
   doc,
   onSnapshot,
@@ -54,6 +55,7 @@ export let analytics = null;
 // Caminhos agora como arrays (hierárquicos válidos)
 export const SERVICE_COLLECTION_PATH = ["artifacts", appId, "public", "data", "serviceJobs"];
 export const ALIGNMENT_COLLECTION_PATH = ["artifacts", appId, "public", "data", "alignmentQueue"];
+export const USERS_COLLECTION_PATH = ["artifacts", appId, "public", "data", "users"];
 
 export async function initializeFirebase() {
   try {
@@ -80,6 +82,7 @@ export {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   getDocs,
   doc,
   onSnapshot,

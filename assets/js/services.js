@@ -24,7 +24,8 @@ import {
   renderReadyJobs,
   calculateAndRenderDailyStats
 } from './uiRender.js';
-import { MANAGER_ROLE } from './auth.js';
+import { MANAGER_ROLE, VENDEDOR_ROLE } from './auth.js';
+import { updateRemovalList } from './removal.js';
 
 /* ============================================================================
    🔔 UTILITÁRIOS
@@ -59,15 +60,16 @@ export function setupRealtimeListeners() {
 
   const serviceQuery = query(
     collection(db, ...SERVICE_COLLECTION_PATH),
-    where('status', 'in', ['Pendente', 'Pronto para Pagamento', 'Finalizado', 'Serviço Geral Concluído'])
+    where('status', 'in', ['Pendente', 'Pronto para Pagamento', 'Finalizado', 'Serviço Geral Concluído', 'Perdido'])
   );
 
   onSnapshot(serviceQuery, (snapshot) => {
     const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    state.serviceJobs = jobs.filter(j => j.status !== 'Finalizado' || isTimestampFromToday(j.finalizedAt));
+    state.serviceJobs = jobs.filter(j => (j.status !== 'Finalizado' && j.status !== 'Perdido') || isTimestampFromToday(j.finalizedAt));
     renderServiceQueues(state.serviceJobs);
     renderReadyJobs(state.serviceJobs, state.alignmentQueue);
     calculateAndRenderDailyStats();
+    updateRemovalList(); // Atualiza a nova aba de remoção
   }, (error) => {
     console.error("Erro no listener de Serviços:", error);
     alertUser("Erro de conexão (Serviços): " + error.message);
@@ -75,16 +77,17 @@ export function setupRealtimeListeners() {
 
   const alignmentQuery = query(
     collection(db, ...ALIGNMENT_COLLECTION_PATH),
-    where('status', 'in', ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral', 'Pronto para Pagamento', 'Finalizado'])
+    where('status', 'in', ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral', 'Pronto para Pagamento', 'Finalizado', 'Perdido'])
   );
 
   onSnapshot(alignmentQuery, (snapshot) => {
     const cars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    state.alignmentQueue = cars.filter(c => c.status !== 'Finalizado' || isTimestampFromToday(c.finalizedAt));
+    state.alignmentQueue = cars.filter(c => (c.status !== 'Finalizado' && c.status !== 'Perdido') || isTimestampFromToday(c.finalizedAt));
     renderAlignmentQueue(state.alignmentQueue);
     renderAlignmentMirror(state.alignmentQueue);
     renderReadyJobs(state.serviceJobs, state.alignmentQueue);
     calculateAndRenderDailyStats();
+    updateRemovalList(); // Atualiza a nova aba de remoção
   }, (error) => {
     console.error("Erro no listener de Alinhamento:", error);
     alertUser("Erro de conexão (Alinhamento): " + error.message);
@@ -111,7 +114,7 @@ export async function markServiceReady(docId, serviceType) { // serviceType é '
     if (!serviceDoc.exists()) throw new Error("Documento de Serviço não encontrado.");
 
     const job = serviceDoc.data();
-    const isGsReady = job.statusGS === 'Serviço Geral Concluído';
+    const isGsReady = job.statusGS === 'Serviço Geral Concluído' || job.statusGS === null; // Se não há GS, está pronto.
     const isTsReady = job.statusTS === 'Serviço Pneus Concluído' || job.statusTS === null;
 
     if (isGsReady && isTsReady) {
@@ -170,15 +173,20 @@ export async function finalizeJob(docId, collectionType) {
     alertUser('Erro ao finalizar serviço.');
   }
 }
+
 /* ============================================================================
-   🧠 LÓGICA DE ATRIBUIÇÃO
+   🧠 LÓGICA DE ATRIBUIÇÃO AUTOMÁTICA
 ============================================================================ */
 async function getLeastLoadedMechanic() {
     if (state.MECHANICS.length === 0) {
         throw new Error("Nenhum mecânico (Geral) ativo para atribuição.");
     }
 
-    const q = query(collection(db, ...SERVICE_COLLECTION_PATH), where('status', '==', 'Pendente'));
+    const q = query(
+        collection(db, ...SERVICE_COLLECTION_PATH), 
+        where('status', '==', 'Pendente'),
+        where('statusGS', '==', 'Pendente') // CORREÇÃO: Conta apenas os serviços pendentes para o mecânico geral
+    );
     const snapshot = await getDocs(q);
     const jobsToCount = snapshot.docs.map(doc => doc.data());
 
@@ -199,8 +207,10 @@ async function getLeastLoadedMechanic() {
             leastLoadedMechanic = mechanic;
         }
     }
+    console.log(`🤖 Atribuição automática: ${leastLoadedMechanic} é o mecânico com menos carga.`);
     return leastLoadedMechanic;
 }
+
 
 /* ============================================================================
    🎬 HANDLERS DE FORMULÁRIO
@@ -208,17 +218,19 @@ async function getLeastLoadedMechanic() {
 export function initServiceFormHandler() {
     document.getElementById('service-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!state.isLoggedIn) return alertUser("Você precisa estar logado.");
+        if (!state.isLoggedIn || (state.currentUserRole !== MANAGER_ROLE && state.currentUserRole !== VENDEDOR_ROLE)) {
+            return alertUser("Acesso negado.");
+        }
 
         const customerName = document.getElementById('customerName').value.trim();
-        const vendedorName = document.getElementById('vendedorName').value.trim();
+        const vendedorName = document.getElementById('vendedorName').value; // Já preenchido e readonly
         const licensePlate = document.getElementById('licensePlate').value.trim().toUpperCase();
         const carModel = document.getElementById('carModel').value.trim();
         let serviceDescription = document.getElementById('serviceDescription').value.trim();
         const isServiceDefined = serviceDescription !== '';
         if (!isServiceDefined) serviceDescription = 'Avaliação';
 
-        const manualSelection = document.getElementById('manualMechanic').value;
+        const mechanicSelection = document.getElementById('assignedMechanic').value;
         const willAlign = document.querySelector('input[name="willAlign"]:checked').value === 'Sim';
         const willTireChange = document.querySelector('input[name="willTireChange"]:checked').value === 'Sim';
 
@@ -227,10 +239,19 @@ export function initServiceFormHandler() {
         errorElement.textContent = '';
         messageElement.textContent = 'Atribuindo...';
 
+        if (!mechanicSelection) {
+            errorElement.textContent = 'Por favor, atribua um mecânico para o serviço geral.';
+            messageElement.textContent = '';
+            return;
+        }
+
         try {
-            const assignedMechanic = manualSelection && state.MECHANICS.includes(manualSelection)
-                ? manualSelection
-                : await getLeastLoadedMechanic();
+            let assignedMechanic;
+            if (mechanicSelection === 'automatic') {
+                assignedMechanic = await getLeastLoadedMechanic();
+            } else {
+                assignedMechanic = mechanicSelection;
+            }
 
             const newJob = {
                 customerName, vendedorName, licensePlate, carModel, serviceDescription, isServiceDefined,
@@ -278,7 +299,9 @@ export function initServiceFormHandler() {
 export function initAlignmentFormHandler() {
     document.getElementById('alignment-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!state.isLoggedIn) return alertUser("Você precisa estar logado.");
+        if (!state.isLoggedIn || (state.currentUserRole !== MANAGER_ROLE && state.currentUserRole !== VENDEDOR_ROLE)) {
+            return alertUser("Acesso negado.");
+        }
 
         const customerName = document.getElementById('aliCustomerName').value.trim();
         const vendedorName = document.getElementById('aliVendedorName').value.trim();
@@ -312,7 +335,7 @@ export function initAlignmentFormHandler() {
 }
 
 export async function defineService(docId, newDescription) {
-    if (state.currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado.");
+    if (state.currentUserRole !== MANAGER_ROLE && state.currentUserRole !== VENDEDOR_ROLE) return alertUser("Acesso negado.");
     if (!newDescription || !docId) return alertUser("Descrição inválida.");
 
     const dataToUpdate = { serviceDescription: newDescription, isServiceDefined: true };

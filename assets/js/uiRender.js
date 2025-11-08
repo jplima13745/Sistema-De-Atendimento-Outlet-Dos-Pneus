@@ -1,6 +1,6 @@
 
 import { state } from './appState.js';
-import { MANAGER_ROLE } from './auth.js';
+import { MANAGER_ROLE, VENDEDOR_ROLE, MECANICO_ROLE, ALIGNER_ROLE } from './auth.js';
 import { getSortedAlignmentQueue } from './alignment.js';
 import {
     Timestamp
@@ -9,19 +9,29 @@ import {
 
 export function renderMechanicsManagement() {
     const activeMechSpan = document.getElementById('active-mechanics');
-    const removeSelect = document.getElementById('mechanicToRemove');
-    const manualSelect = document.getElementById('manualMechanic'); 
+    const assignSelect = document.getElementById('assignedMechanic');
 
-    const mechanicTitle = state.MECHANICS.join(', ');
-    document.getElementById('mechanic-list-title').textContent = mechanicTitle;
-    document.getElementById('mechanic-monitor-title').textContent = mechanicTitle;
-    activeMechSpan.textContent = mechanicTitle;
+    const mechanicNames = state.MECHANICS;
 
-    let optionsHTML = '<option value="">-- Automático --</option>';
-    optionsHTML += state.MECHANICS.map(m => `<option value="${m}">${m}</option>`).join('');
+    document.getElementById('mechanic-list-title').textContent = mechanicNames.join(', ');
+    document.getElementById('mechanic-monitor-title').textContent = mechanicNames.join(', ');
+    assignSelect.innerHTML = '<option value="automatic">-- Atribuição Automática --</option>' + mechanicNames.map(name => `<option value="${name}">${name}</option>`).join('');
+}
 
-    removeSelect.innerHTML = state.MECHANICS.map(m => `<option value="${m}">${m}</option>`).join('');
-    manualSelect.innerHTML = optionsHTML;
+export function renderSalespersonDropdowns() {
+    const vendedorSelect = document.getElementById('vendedorName');
+    const aliVendedorSelect = document.getElementById('aliVendedorName');
+    if (!vendedorSelect || !aliVendedorSelect) return;
+
+    const salespeople = state.users.filter(u => u.role === 'vendedor').map(u => u.username);
+    
+    // Adiciona "Gerente" como uma opção de vendedor
+    const options = ['Gerente', ...salespeople];
+
+    const optionsHTML = options.map(name => `<option value="${name}">${name}</option>`).join('');
+
+    vendedorSelect.innerHTML = optionsHTML;
+    aliVendedorSelect.innerHTML = optionsHTML;
 }
 
 export function renderServiceQueues(jobs) {
@@ -30,17 +40,12 @@ export function renderServiceQueues(jobs) {
     const tireShopList = document.getElementById('tire-shop-list');
     const tireShopCount = document.getElementById('tire-shop-count');
 
-    mechanicsContainer.innerHTML = '';
-    monitorContainer.innerHTML = '';
-    tireShopList.innerHTML = '';
-
-    const pendingJobs = jobs.filter(job => job.status === 'Pendente' || job.status === 'Serviço Geral Concluído');
-
+    // CORREÇÃO: Agrupamento de jobs movido para o início da função.
     const groupedJobs = {};
-    state.MECHANICS.forEach(m => groupedJobs[m] = []);
+    [...state.MECHANICS, state.TIRE_SHOP_MECHANIC].forEach(m => groupedJobs[m] = []); // Inclui 'Borracheiro'
     const tireShopJobs = [];
 
-    pendingJobs.sort((a, b) => getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp));
+    jobs.sort((a, b) => getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp));
 
     jobs.forEach(job => {
         if (job.statusGS === 'Pendente' && state.MECHANICS.includes(job.assignedMechanic)) {
@@ -50,6 +55,16 @@ export function renderServiceQueues(jobs) {
             tireShopJobs.push(job);
         }
     });
+
+    mechanicsContainer.innerHTML = '';
+    
+    // Se for mecânico, chama a função de renderização específica e encerra
+    if (state.currentUserRole === MECANICO_ROLE) {
+        renderMechanicView(jobs, groupedJobs);
+        return;
+    }
+    monitorContainer.innerHTML = '';
+    tireShopList.innerHTML = '';
 
     tireShopCount.textContent = `${tireShopJobs.length} Carros`;
     if (tireShopJobs.length > 0) {
@@ -74,6 +89,7 @@ export function renderServiceQueues(jobs) {
         tireShopList.innerHTML = '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. ✅</p>';
     }
 
+    // VISÃO DO GERENTE/VENDEDOR: Mostra todos os painéis
     if (state.MECHANICS.length === 0) {
          mechanicsContainer.innerHTML = '<p class="text-sm text-red-600 italic p-3 border rounded-md">Nenhum mecânico geral cadastrado. Por favor, adicione mecânicos na Aba de Serviços.</p>';
     }
@@ -84,7 +100,7 @@ export function renderServiceQueues(jobs) {
             const isTsPending = job.statusTS === 'Pendente';
             const statusText = isTsPending ? `(Aguardando Pneus)` : '';
             const statusColor = isTsPending ? 'text-red-500' : 'text-gray-500';
-            const isManager = state.currentUserRole === MANAGER_ROLE;
+            const canDefineService = state.currentUserRole === MANAGER_ROLE || state.currentUserRole === VENDEDOR_ROLE;
             const isDefined = job.isServiceDefined;
 
             let descriptionHTML = '';
@@ -93,7 +109,7 @@ export function renderServiceQueues(jobs) {
 
             if (!isDefined) {
                 descriptionHTML = '<span class="font-bold text-red-600">(Aguardando Definição de Serviço)</span>';
-                if (isManager) {
+                if (canDefineService) {
                     clickHandler = `onclick="showDefineServiceModal('${job.id}')"`;
                     cursorClass = 'cursor-pointer hover:bg-yellow-100/50 transition duration-150';
                     descriptionHTML += '<span class="text-xs text-blue-600 block">(Clique para definir)</span>';
@@ -141,6 +157,68 @@ export function renderServiceQueues(jobs) {
             </div>
         `;
     });
+
+    // Garante que o monitor do borracheiro também apareça
+    monitorContainer.innerHTML += `
+        <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200 text-center">
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">${state.TIRE_SHOP_MECHANIC}</h3>
+            <p class="text-6xl font-extrabold ${tireShopJobs.length > 1 ? 'text-red-600' : 'text-blue-600'}">
+                ${tireShopJobs.length}
+            </p>
+            <p class="text-gray-500 mt-2">Carros Pendentes (Pneus)</p>
+        </div>
+    `;
+}
+
+/**
+ * Renderiza a visão exclusiva para o mecânico logado.
+ */
+function renderMechanicView(jobs, groupedJobs) {
+    const mechanicViewContainer = document.getElementById('mechanic-view');
+    if (!mechanicViewContainer) return;
+
+    const myName = state.userId;
+    const myJobs = groupedJobs[myName] || [];
+
+    const jobListHTML = myJobs.map(job => {
+        const isTsPending = job.statusTS === 'Pendente';
+        const statusText = isTsPending ? `(Aguardando Pneus)` : '';
+        const statusColor = isTsPending ? 'text-red-500' : 'text-gray-500';
+        const isDefined = job.isServiceDefined;
+        const descriptionHTML = isDefined
+            ? `<p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 30)}... ${statusText}</p>`
+            : '<span class="font-bold text-red-600">(Aguardando Definição de Serviço)</span>';
+
+        return `
+            <li class="p-3 bg-white border-l-4 border-blue-500 rounded-md shadow-sm flex justify-between items-center">
+                <div>
+                    <p class="font-semibold text-gray-800">${job.licensePlate} (${job.carModel || 'N/A'})</p>
+                    ${descriptionHTML}
+                </div>
+                <button onclick="event.stopPropagation(); showServiceReadyConfirmation('${job.id}', 'GS')"
+                        class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        ${!isDefined ? 'disabled' : ''}>
+                    Pronto
+                </button>
+            </li>
+        `;
+    }).join('');
+
+    mechanicViewContainer.innerHTML = `
+        <div class="p-4 md:p-8">
+            <div class="mechanic-card bg-gray-50 p-6 rounded-lg shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-3 flex justify-between items-center">
+                    Meus Serviços Pendentes
+                    <span class="text-base font-semibold py-1 px-4 rounded-full ${myJobs.length > 1 ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'}">
+                        ${myJobs.length} Carro(s)
+                    </span>
+                </h2>
+                <ul class="space-y-3">
+                    ${jobListHTML.length > 0 ? jobListHTML : '<li class="text-base text-gray-500 italic p-4 border rounded-md bg-white">Nenhum carro na sua fila. ✅</li>'}
+                </ul>
+            </div>
+        </div>
+    `;
 }
 
 export function renderAlignmentQueue(cars) {
@@ -366,4 +444,102 @@ export function getTimestampSeconds(timestamp) {
     if (typeof timestamp.toMillis === 'function') return timestamp.toMillis() / 1000; // SDK v9
     if (typeof timestamp === 'number') return Math.floor(timestamp / 1000); // Date.now()
     return 0;
+}
+
+export function renderUserList(users) {
+    const container = document.getElementById('user-list-container');
+    if (!users || users.length === 0) {
+        container.innerHTML = '<p class="p-4 text-center text-gray-500">Nenhum usuário cadastrado.</p>';
+        return;
+    }
+
+    const tableHTML = `
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome de Usuário</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cargo</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                ${users.map(user => `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.username}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.role}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button 
+                                onclick="showDeleteUserConfirmation('${user.id}', '${user.username}')" 
+                                class="text-red-600 hover:text-red-900 transition"
+                                ${user.role === 'manager' ? 'disabled title="Não é possível excluir o gerente"' : ''}
+                            >
+                                Excluir
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = tableHTML;
+}
+
+export function renderRemovalList(serviceJobs, alignmentQueue) {
+    const container = document.getElementById('removal-list-container');
+
+    const activeServiceJobs = serviceJobs
+        .filter(job => ['Pendente', 'Serviço Geral Concluído'].includes(job.status))
+        .map(job => ({ ...job, type: 'service', sortTimestamp: getTimestampSeconds(job.timestamp) }));
+
+    const activeAlignmentJobs = alignmentQueue
+        .filter(car => ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral'].includes(car.status))
+        .map(car => ({ ...car, type: 'alignment', sortTimestamp: getTimestampSeconds(car.timestamp) }));
+
+    const allActiveJobs = [...activeServiceJobs, ...activeAlignmentJobs];
+    allActiveJobs.sort((a, b) => b.sortTimestamp - a.sortTimestamp); // Invertido para mostrar mais recentes primeiro
+
+    if (allActiveJobs.length === 0) {
+        container.innerHTML = '<p class="p-4 text-center text-gray-500">Nenhum serviço ativo para gerenciar.</p>';
+        return;
+    }
+
+    const tableHTML = `
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Origem</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Placa / Modelo</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Atual</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responsável</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                ${allActiveJobs.map(job => {
+                    const isService = job.type === 'service';
+                    const originText = isService ? 'Mecânica/Borracharia' : 'Alinhamento';
+                    const originColor = isService ? 'text-blue-700' : 'text-yellow-700';
+                    const responsible = isService ? job.assignedMechanic : (job.status === 'Em Atendimento' ? 'Alinhador' : 'Fila');
+
+                    return `
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${originColor}">${originText}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${job.licensePlate} (${job.carModel})</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${job.status}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${responsible}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button 
+                                    onclick="showManagementModal('${job.id}', '${job.type}', '${job.licensePlate}')" 
+                                    class="py-2 px-4 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition">
+                                    Gerenciar
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = tableHTML;
 }
