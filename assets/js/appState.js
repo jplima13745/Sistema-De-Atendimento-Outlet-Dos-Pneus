@@ -13,6 +13,7 @@ export const state = {
         services: [],
         alignments: []
     }, // Cache para serviços finalizados hoje
+    dailyReport: [], // NOVO: Cache para os dados processados do relatório diário
     users: [],
     jobIdCounter: 100,
     aliIdCounter: 200,
