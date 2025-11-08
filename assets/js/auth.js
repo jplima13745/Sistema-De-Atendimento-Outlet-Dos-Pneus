@@ -28,6 +28,14 @@ export function postLoginSetup(username, role) {
   state.currentUserRole = role;
   state.userId = username;
 
+  // NOVO: Salva a sessão no localStorage com um timestamp
+  const sessionData = {
+    username,
+    role,
+    timestamp: Date.now()
+  };
+  localStorage.setItem('userSession', JSON.stringify(sessionData));
+
   // Interface
   document.getElementById('login-container').classList.add('hidden');
   document.getElementById('main-content').classList.remove('hidden');
@@ -167,5 +175,7 @@ export function handleLogout() {
   document.getElementById('main-content').classList.add('hidden');
   document.getElementById('login-form').reset();
   document.getElementById('login-error').textContent = '';
+  // NOVO: Limpa a sessão do localStorage ao fazer logout
+  localStorage.removeItem('userSession');
   document.getElementById('login-container').classList.remove('hidden');
 }

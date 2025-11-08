@@ -395,12 +395,16 @@ export function renderReadyJobs(serviceJobs, alignmentQueue) {
 }
 
 export function calculateAndRenderDailyStats() {
-    // Filtra apenas os jobs finalizados hoje
-    const finalizedServicesToday = state.serviceJobs.filter(j => j.status === 'Finalizado' && getTimestampSeconds(j.finalizedAt) > 0);
-    const finalizedAlignmentsToday = state.alignmentQueue.filter(a => a.status === 'Finalizado' && getTimestampSeconds(a.finalizedAt) > 0);
+    // REFINAMENTO: Lógica de contagem mais precisa e robusta.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
 
-    // CORREÇÃO LÓGICA: Contar carros únicos (por placa) para o total do dia.
-    // Isso evita contar o mesmo carro duas vezes se ele fez serviço geral e alinhamento.
+    // 1. Filtra apenas os serviços e alinhamentos finalizados HOJE.
+    const finalizedServicesToday = state.serviceJobs.filter(j => j.status === 'Finalizado' && j.finalizedAt && getTimestampSeconds(j.finalizedAt) >= startOfTodaySeconds);
+    const finalizedAlignmentsToday = state.alignmentQueue.filter(a => a.status === 'Finalizado' && a.finalizedAt && getTimestampSeconds(a.finalizedAt) >= startOfTodaySeconds);
+
+    // 2. Calcula o total de carros únicos (por placa) para evitar contagem dupla.
     const allFinalizedPlates = [
         ...finalizedServicesToday.map(j => j.licensePlate),
         ...finalizedAlignmentsToday.map(a => a.licensePlate)
@@ -408,14 +412,16 @@ export function calculateAndRenderDailyStats() {
     const uniquePlates = new Set(allFinalizedPlates.filter(Boolean));
     const totalToday = uniquePlates.size;
 
-    const alignmentCount = state.alignmentQueue.filter(a => a.status === 'Finalizado').length;
+    // 3. Contagem específica de alinhamentos finalizados hoje.
+    const alignmentCount = finalizedAlignmentsToday.length;
 
+    // 4. Contagem de serviços por mecânico e borracheiro, apenas dos finalizados hoje.
     const mechanicStats = {};
     state.MECHANICS.forEach(m => mechanicStats[m] = 0);
     mechanicStats[state.TIRE_SHOP_MECHANIC] = 0;
 
-    state.serviceJobs.filter(j => j.status === 'Finalizado').forEach(job => {
-        if (job.assignedMechanic && state.MECHANICS.includes(job.assignedMechanic)) {
+    finalizedServicesToday.forEach(job => {
+        if (job.assignedMechanic && mechanicStats.hasOwnProperty(job.assignedMechanic)) {
             mechanicStats[job.assignedMechanic]++;
         }
         if (job.assignedTireShop === state.TIRE_SHOP_MECHANIC) {
@@ -423,6 +429,7 @@ export function calculateAndRenderDailyStats() {
         }
     });
 
+    // 5. Renderiza os resultados no HTML.
     const statsContainer = document.getElementById('stats-container');
     statsContainer.innerHTML = `
         <div class="p-4 bg-blue-100 rounded-lg shadow text-center">

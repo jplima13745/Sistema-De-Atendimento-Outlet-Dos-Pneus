@@ -14,6 +14,29 @@ function showInitialUI() {
     document.getElementById('login-container').classList.remove('hidden');
 }
 
+function checkAndRestoreSession() {
+    const sessionDataJSON = localStorage.getItem('userSession');
+    if (!sessionDataJSON) {
+        return false;
+    }
+
+    try {
+        const sessionData = JSON.parse(sessionDataJSON);
+        const TWELVE_HOURS_IN_MS = 12 * 60 * 60 * 1000;
+
+        if (Date.now() - sessionData.timestamp < TWELVE_HOURS_IN_MS) {
+            console.log("Restaurando sessão válida para:", sessionData.username);
+            postLoginSetup(sessionData.username, sessionData.role);
+            return true;
+        } else {
+            localStorage.removeItem('userSession'); // Sessão expirada
+            return false;
+        }
+    } catch (e) {
+        return false; // Dados de sessão corrompidos
+    }
+}
+
 async function initApp() {
     document.getElementById('login-container').classList.add('hidden');
     document.getElementById('main-content').classList.add('hidden');
@@ -38,7 +61,10 @@ async function initApp() {
 
             // A autenticação do Firebase está pronta, podemos mostrar a UI de login.
             state.isAuthReady = true;
-            showInitialUI();
+            // NOVO: Tenta restaurar a sessão antes de mostrar a tela de login
+            if (!checkAndRestoreSession()) {
+                showInitialUI();
+            }
         });
 
     } catch (e) {
