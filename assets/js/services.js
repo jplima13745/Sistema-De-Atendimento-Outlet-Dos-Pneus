@@ -80,18 +80,17 @@ export function setupRealtimeListeners() {
     where('status', 'in', ['Pendente', 'Pronto para Pagamento'])
   );
 
-  // OTIMIZAÇÃO: Query para serviços finalizados (filtra por data no cliente para evitar problemas de índice)
-  // Nota: Firestore pode precisar de índice composto para queries com múltiplos where
-  // Por isso, buscamos apenas finalizados e filtramos por data no cliente
-  const finalizedServiceQuery = query(
-    collection(db, ...SERVICE_COLLECTION_PATH),
-    where('status', '==', 'Finalizado')
-  );
-  
   // Calcula timestamp do início do dia para filtro no cliente
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const startOfTodayTimestamp = Timestamp.fromDate(startOfToday);
+
+  // REVERSÃO TEMPORÁRIA: A query otimizada requer um índice composto no Firestore.
+  // Voltando para a busca ampla e filtro no cliente para evitar erros até que o índice seja criado.
+  const finalizedServiceQuery = query(
+    collection(db, ...SERVICE_COLLECTION_PATH),
+    where('status', '==', 'Finalizado')
+  );
 
   // Listener para serviços ativos
   window._serviceListener = onSnapshot(activeServiceQuery, (snapshot) => {
@@ -139,7 +138,7 @@ export function setupRealtimeListeners() {
     where('status', 'in', ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral', 'Pronto para Pagamento'])
   );
 
-  // OTIMIZAÇÃO: Query para alinhamentos finalizados (filtra por data no cliente)
+  // REVERSÃO TEMPORÁRIA: Mesma razão acima.
   const finalizedAlignmentQuery = query(
     collection(db, ...ALIGNMENT_COLLECTION_PATH),
     where('status', '==', 'Finalizado')
@@ -205,9 +204,11 @@ export async function markServiceReady(docId, serviceType) { // serviceType é '
     const dataToUpdate = {};
     if (serviceType === 'GS') {
       dataToUpdate.statusGS = 'Serviço Geral Concluído';
+      dataToUpdate.gsCompletedAt = serverNow(); // NOVO: Timestamp de conclusão do GS
     }
     if (serviceType === 'TS') {
       dataToUpdate.statusTS = 'Serviço Pneus Concluído';
+      dataToUpdate.tsCompletedAt = serverNow(); // NOVO: Timestamp de conclusão do TS
     }
     
     await updateDoc(serviceDocRef, dataToUpdate);

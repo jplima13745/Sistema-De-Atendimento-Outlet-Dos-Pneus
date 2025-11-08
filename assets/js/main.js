@@ -7,6 +7,7 @@ import { initAlignmentHandlers } from './alignment.js';
 import { initServiceFormHandler, initAlignmentFormHandler } from './services.js';
 import { initAdminHandlers } from './admin.js';
 import { initRemovalHandlers } from './removal.js';
+import './devTools.js'; // NOVO: Importa as ferramentas de desenvolvedor (como o seedData)
 
 function showInitialUI() {
     // Esconde o conteúdo principal e mostra a tela de login por padrão

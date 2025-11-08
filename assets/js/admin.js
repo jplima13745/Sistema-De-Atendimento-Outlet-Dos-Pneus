@@ -12,7 +12,7 @@ import {
     getDocs,
     USERS_COLLECTION_PATH
 } from './firebaseConfig.js';
-import { renderUserList, renderMechanicsManagement, renderSalespersonDropdowns } from './uiRender.js';
+import { renderUserList, renderMechanicsManagement, renderSalespersonDropdowns, calculateAndRenderDailyStats } from './uiRender.js';
 import { showDestructiveConfirmationModal } from './modals.js';
 
 /**
@@ -32,8 +32,21 @@ export function initAdminHandlers() {
 /**
  * Cria um listener em tempo real para a coleção de usuários.
  */
-function setupUserListener() {
+async function setupUserListener() {
     if (!db) return;
+
+    // CORREÇÃO: Busca inicial para popular o estado rapidamente na inicialização.
+    try {
+        const initialSnapshot = await getDocs(query(collection(db, ...USERS_COLLECTION_PATH)));
+        state.users = initialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Popula as listas essenciais e renderiza componentes dependentes.
+        updateStateAndRenderUsers();
+        console.log("✅ Busca inicial de usuários concluída.");
+    } catch (error) {
+        console.error("Erro na busca inicial de usuários:", error);
+    }
+
+    // Agora, configura o listener em tempo real para capturar apenas as MUDANÇAS.
     const q = query(collection(db, ...USERS_COLLECTION_PATH));
     onSnapshot(q, (snapshot) => {
         // Otimização: Usar docChanges() para processar apenas as alterações.
@@ -52,14 +65,21 @@ function setupUserListener() {
             }
         });
 
-        // Sincroniza a lista de mecânicos no estado global
-        state.MECHANICS = state.users.filter(u => u.role === 'mecanico').map(u => u.username);
-        renderUserList(state.users);
-        renderMechanicsManagement();
-        renderSalespersonDropdowns();
+        // Se houve alguma mudança, atualiza o estado e a UI.
+        if (snapshot.docChanges().length > 0) {
+            updateStateAndRenderUsers();
+        }
     }, (error) => {
         console.error("Erro ao ouvir a coleção de usuários:", error);
     });
+}
+
+function updateStateAndRenderUsers() {
+    state.MECHANICS = state.users.filter(u => u.role === 'mecanico').map(u => u.username).sort();
+    renderUserList(state.users);
+    renderMechanicsManagement();
+    renderSalespersonDropdowns();
+    calculateAndRenderDailyStats(); // Garante que as métricas sejam recalculadas com a lista de usuários atualizada.
 }
 
 /**

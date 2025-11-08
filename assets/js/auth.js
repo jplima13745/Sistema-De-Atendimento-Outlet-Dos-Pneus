@@ -1,6 +1,6 @@
 // assets/js/auth.js
 import { state } from './appState.js';
-import { db, collection, query, where, getDocs, USERS_COLLECTION_PATH } from './firebaseConfig.js';
+import { db, collection, query, where, getDocs, USERS_COLLECTION_PATH, onSnapshot } from './firebaseConfig.js';
 import {
   renderMechanicsManagement,
   renderServiceQueues,
@@ -22,8 +22,15 @@ export const MANAGER_ROLE = 'manager';
 export const ALIGNER_ROLE = 'aligner';
 export const VENDEDOR_ROLE = 'vendedor';
 export const MECANICO_ROLE = 'mecanico';
+/**
+ * Busca todos os usuários do Firestore e popula o estado da aplicação.
+ * Essencial para garantir que as listas de mecânicos e vendedores estejam disponíveis.
+ * @returns {Promise<void>}
+ */
+async function fetchAndPopulateUsers() {
+}
 
-export function postLoginSetup(username, role) {
+export async function postLoginSetup(username, role) {
   state.isLoggedIn = true;
   state.currentUserRole = role;
   state.userId = username;

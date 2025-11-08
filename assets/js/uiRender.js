@@ -297,9 +297,6 @@ function renderMechanicView(jobs, groupedJobs) {
     const mechanicViewContainer = document.getElementById('mechanic-view');
     if (!mechanicViewContainer) return;
 
-    // CORREÇÃO: Limpa o container antes de renderizar para evitar duplicatas.
-    mechanicViewContainer.innerHTML = '';
-
     const myName = state.userId;
     let myJobs = groupedJobs[myName] || [];
     
@@ -558,6 +555,13 @@ export function renderReadyJobs(serviceJobs, alignmentQueue) {
 
 export function calculateAndRenderDailyStats() {
     // OTIMIZAÇÃO: Usa cache de serviços finalizados hoje (já filtrados pela query)
+    
+    // PASSO 1 & 2 (Dashboard): Processa os dados brutos e calcula as métricas de performance
+    const reportData = processDailyReportData();
+    const performanceMetrics = calculatePerformanceMetrics(reportData);
+    renderPerformanceMetrics(performanceMetrics); // Renderiza as métricas do Passo 2
+    calculateAndRenderHighlights(reportData, performanceMetrics); // NOVO: Renderiza os destaques do Passo 3
+
     const finalizedServicesToday = state.finalizedToday.services || [];
     const finalizedAlignmentsToday = state.finalizedToday.alignments || [];
 
@@ -632,51 +636,363 @@ export function calculateAndRenderDailyStats() {
     `;
 }
 
-// NOVO: Função para calcular e renderizar as métricas da aba de Relatórios
-export function renderReportMetrics() {
-    const container = document.getElementById('reports-metrics-container');
+// =================================================================================================
+// PASSO 1 & 2 (Dashboard): Processamento de Dados e Métricas
+// =================================================================================================
+
+/**
+ * PASSO 1: Processa os dados brutos dos serviços finalizados para criar um relatório unificado.
+ * @returns {Array} Os dados processados do relatório diário.
+ */
+function processDailyReportData() {
+    const finalizedServices = state.finalizedToday.services || [];
+    const finalizedAlignments = state.finalizedToday.alignments || [];
+
+    const reportMap = new Map();
+
+    // 1. Processa os serviços de mecânica/borracharia
+    finalizedServices.forEach(job => {
+        const startTime = job.timestamp?.toMillis() || 0;
+        const endTime = job.finalizedAt?.toMillis() || 0;
+        const durationMinutes = endTime > startTime ? Math.round((endTime - startTime) / 60000) : 0;
+
+        // Calcula durações das etapas individuais
+        const gsDuration = (job.gsCompletedAt?.toMillis() || endTime) - startTime;
+        const tsDuration = job.tsCompletedAt ? (job.tsCompletedAt.toMillis() - (job.gsCompletedAt?.toMillis() || startTime)) : 0;
+
+        const entry = {
+            licensePlate: job.licensePlate,
+            carModel: job.carModel,
+            vendedorName: job.vendedorName,
+            startTime: job.timestamp?.toDate(),
+            endTime: job.finalizedAt?.toDate(), // Pode ser atualizado pelo alinhamento
+            totalTime: durationMinutes,
+            stepDurations: {
+                // A duração do GS é do início até sua conclusão.
+                'Serviço Geral': gsDuration > 0 ? Math.round(gsDuration / 60000) : 0,
+                // A duração do TS é da conclusão do GS (ou início) até sua própria conclusão.
+                'Borracharia': tsDuration > 0 ? Math.round(tsDuration / 60000) : 0,
+            },
+            mechanics: new Set(),
+            steps: new Set(),
+        };
+
+        // Adiciona mecânico do serviço geral
+        if (job.assignedMechanic) {
+            entry.mechanics.add(job.assignedMechanic);
+            entry.steps.add('Serviço Geral');
+        }
+        // Adiciona borracheiro se houve serviço de pneus
+        if (job.assignedTireShop) {
+            entry.mechanics.add(state.TIRE_SHOP_MECHANIC);
+            entry.steps.add('Borracharia');
+        }
+
+        reportMap.set(job.licensePlate, entry);
+    });
+
+    // 2. Processa os alinhamentos e os une aos serviços existentes
+    finalizedAlignments.forEach(car => {
+        const existingEntry = reportMap.get(car.licensePlate);
+
+        if (existingEntry) {
+            // O carro já existe (veio de um serviço geral), então apenas adicionamos as informações de alinhamento
+            existingEntry.steps.add('Alinhamento');
+            existingEntry.mechanics.add('Alinhador'); // Nome fixo para o responsável pelo alinhamento
+
+            // Calcula a duração do alinhamento
+            const alignmentStartTime = car.timestamp?.toMillis() || 0;
+            const alignmentEndTimeMs = car.finalizedAt?.toMillis() || 0;
+            const alignmentDuration = alignmentEndTimeMs > alignmentStartTime ? Math.round((alignmentEndTimeMs - alignmentStartTime) / 60000) : 0;
+            existingEntry.stepDurations['Alinhamento'] = alignmentDuration;
+
+            // Se o alinhamento terminou depois, atualiza o tempo final e a duração total
+            const alignmentEndTime = car.finalizedAt?.toDate();
+            if (alignmentEndTime > existingEntry.endTime) {
+                existingEntry.endTime = alignmentEndTime;
+                // A duração total é a soma das etapas para maior precisão
+                existingEntry.totalTime = Object.values(existingEntry.stepDurations).reduce((a, b) => a + b, 0);
+            }
+        } else {
+            // É um alinhamento avulso, cria uma nova entrada
+            const durationMs = (car.finalizedAt?.toMillis() || 0) - (car.timestamp?.toMillis() || 0);
+            const durationMinutes = durationMs > 0 ? Math.round(durationMs / 60000) : 0;
+
+            const entry = {
+                licensePlate: car.licensePlate,
+                carModel: car.carModel,
+                vendedorName: car.vendedorName,
+                startTime: car.timestamp?.toDate(),
+                endTime: car.finalizedAt?.toDate(),
+                totalTime: durationMinutes,
+                stepDurations: {
+                    'Alinhamento': durationMinutes
+                },
+                mechanics: new Set(['Alinhador']),
+                steps: new Set(['Alinhamento']),
+            };
+            reportMap.set(car.licensePlate, entry);
+        }
+    });
+
+    // 3. Converte o Map para um array e ordena pelos mais recentes primeiro
+    state.dailyReport = Array.from(reportMap.values()).sort((a, b) => b.endTime - a.endTime);
+
+    // 4. Chama a função de renderização da tabela de histórico (Passo 1)
+    renderDailyHistoryTable(state.dailyReport);
+
+    return state.dailyReport;
+}
+
+
+// =================================================================================================
+// PASSO 2 & 3 (Dashboard): Cálculo de Métricas e Destaques
+// =================================================================================================
+/**
+ * PASSO 2: Calcula as métricas de performance a partir dos dados do relatório.
+ * @param {Array} reportData - Os dados processados do relatório diário.
+ * @returns {Object} Um objeto contendo as métricas calculadas.
+ */
+function calculatePerformanceMetrics(reportData) {
+    const mechanicMetrics = {};
+    const stepMetrics = {
+        'Serviço Geral': { totalTime: 0, carCount: 0, averageTime: 0 },
+        'Borracharia': { totalTime: 0, carCount: 0, averageTime: 0 },
+        'Alinhamento': { totalTime: 0, carCount: 0, averageTime: 0 },
+    };
+
+    // Inicializa métricas para todos os mecânicos conhecidos
+    [...state.MECHANICS, state.TIRE_SHOP_MECHANIC, 'Alinhador'].forEach(name => {
+        mechanicMetrics[name] = { totalTime: 0, carCount: 0, averageTime: 0 };
+    });
+
+    reportData.forEach(item => {
+        // Calcula métricas por mecânico
+        item.mechanics.forEach(mechanicName => {
+            if (mechanicMetrics[mechanicName]) {
+                mechanicMetrics[mechanicName].carCount += 1;
+                mechanicMetrics[mechanicName].totalTime += item.totalTime; // Usando tempo total por carro para cada mecânico envolvido
+            }
+        });
+
+        // Calcula métricas por etapa
+        for (const stepName in item.stepDurations) {
+            if (stepMetrics[stepName] && item.stepDurations[stepName] > 0) {
+                stepMetrics[stepName].carCount += 1;
+                stepMetrics[stepName].totalTime += item.stepDurations[stepName];
+            }
+        }
+    });
+
+    // Finaliza o cálculo das médias
+    for (const name in mechanicMetrics) {
+        const metric = mechanicMetrics[name];
+        if (metric.carCount > 0) {
+            metric.averageTime = Math.round(metric.totalTime / metric.carCount);
+        }
+    }
+
+    for (const name in stepMetrics) {
+        const metric = stepMetrics[name];
+        if (metric.carCount > 0) {
+            metric.averageTime = Math.round(metric.totalTime / metric.carCount);
+        }
+    }
+
+    return { mechanicMetrics, stepMetrics };
+}
+
+/**
+ * PASSO 3: Analisa as métricas e os dados do relatório para encontrar os destaques do dia.
+ * @param {Array} reportData - Os dados processados do relatório.
+ * @param {Object} performanceMetrics - As métricas de performance calculadas.
+ */
+function calculateAndRenderHighlights(reportData, performanceMetrics) {
+    const highlights = {
+        bestMechanic: null,
+        worstMechanic: null,
+        slowestCar: null,
+        fastestCar: null,
+    };
+
+    // 1. Encontrar melhor e pior mecânico
+    const workingMechanics = Object.entries(performanceMetrics.mechanicMetrics)
+        .filter(([, data]) => data.carCount > 0)
+        .map(([name, data]) => ({ name, ...data }));
+
+    if (workingMechanics.length >= 2) {
+        // Para o score, normalizamos os valores de tempo médio e contagem de carros.
+        const maxAvgTime = Math.max(...workingMechanics.map(m => m.averageTime));
+        const minAvgTime = Math.min(...workingMechanics.map(m => m.averageTime));
+        const maxCarCount = Math.max(...workingMechanics.map(m => m.carCount));
+        const minCarCount = Math.min(...workingMechanics.map(m => m.carCount));
+
+        workingMechanics.forEach(mechanic => {
+            // Score de tempo: menor é melhor (valor de 0 a 1)
+            const timeScore = (maxAvgTime - minAvgTime) > 0 ? (maxAvgTime - mechanic.averageTime) / (maxAvgTime - minAvgTime) : 0.5;
+            // Score de contagem: maior é melhor (valor de 0 a 1)
+            const countScore = (maxCarCount - minCarCount) > 0 ? (mechanic.carCount - minCarCount) / (maxCarCount - minCarCount) : 0.5;
+            
+            // Score final: 60% peso para tempo, 40% para quantidade
+            mechanic.performanceScore = (0.6 * timeScore) + (0.4 * countScore);
+        });
+
+        workingMechanics.sort((a, b) => b.performanceScore - a.performanceScore);
+        highlights.bestMechanic = workingMechanics[0];
+        highlights.worstMechanic = workingMechanics[workingMechanics.length - 1];
+    } else if (workingMechanics.length === 1) {
+        highlights.bestMechanic = workingMechanics[0]; // Se só um trabalhou, ele é o destaque
+    }
+
+    // 2. Encontrar carro mais lento e mais rápido
+    if (reportData.length > 0) {
+        const validReports = reportData.filter(r => r.totalTime > 0);
+        if (validReports.length > 0) {
+            highlights.slowestCar = validReports.reduce((max, car) => car.totalTime > max.totalTime ? car : max);
+            highlights.fastestCar = validReports.reduce((min, car) => car.totalTime < min.totalTime ? car : min);
+
+            // Encontra a etapa mais demorada do carro mais lento
+            if (highlights.slowestCar) {
+                const slowestStep = Object.entries(highlights.slowestCar.stepDurations)
+                    .reduce((max, step) => step[1] > max[1] ? step : max, ["", 0]);
+                highlights.slowestCar.slowestStepName = slowestStep[0];
+            }
+        }
+    }
+
+    renderHighlights(highlights);
+}
+
+/**
+ * PASSO 3: Renderiza os cards de destaques do dia.
+ * @param {Object} highlights - O objeto com os destaques calculados.
+ */
+function renderHighlights(highlights) {
+    const container = document.getElementById('highlights-container');
     if (!container) return;
 
-    // OTIMIZAÇÃO: Usa cache de serviços finalizados hoje
-    const finalizedServicesToday = state.finalizedToday.services || [];
-    const finalizedAlignmentsToday = state.finalizedToday.alignments || [];
-    const totalFinalizedToday = finalizedServicesToday.length + finalizedAlignmentsToday.length;
+    let html = '';
 
-    // Filtra serviços perdidos hoje (precisa buscar do estado completo ou criar query separada)
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
-    
-    // Para serviços perdidos, filtra do estado atual (pode ser otimizado depois)
-    const lostServicesToday = state.serviceJobs.filter(j => j.status === 'Perdido' && j.timestamp && getTimestampSeconds(j.timestamp) >= startOfTodaySeconds);
-    const lostAlignmentsToday = state.alignmentQueue.filter(a => a.status === 'Perdido' && a.timestamp && getTimestampSeconds(a.timestamp) >= startOfTodaySeconds);
-    const totalLostToday = lostServicesToday.length + lostAlignmentsToday.length;
+    if (highlights.bestMechanic) {
+        html += `
+        <div class="p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm text-center">
+            <p class="text-sm font-semibold text-green-800">🏅 MELHOR DESEMPENHO</p>
+            <p class="text-2xl font-bold text-green-900 mt-1">${highlights.bestMechanic.name}</p>
+            <p class="text-sm text-gray-600">${highlights.bestMechanic.averageTime} min/carro • ${highlights.bestMechanic.carCount} carro(s)</p>
+        </div>`;
+    }
+    if (highlights.worstMechanic && highlights.bestMechanic !== highlights.worstMechanic) {
+        html += `
+        <div class="p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm text-center">
+            <p class="text-sm font-semibold text-red-800">🧱 PIOR DESEMPENHO</p>
+            <p class="text-2xl font-bold text-red-900 mt-1">${highlights.worstMechanic.name}</p>
+            <p class="text-sm text-gray-600">${highlights.worstMechanic.averageTime} min/carro • ${highlights.worstMechanic.carCount} carro(s)</p>
+        </div>`;
+    }
+    if (highlights.slowestCar) {
+        html += `
+        <div class="p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm text-center">
+            <p class="text-sm font-semibold text-orange-800">🐢 ATENDIMENTO MAIS LENTO</p>
+            <p class="text-xl font-bold text-orange-900 mt-1">${highlights.slowestCar.licensePlate} (${highlights.slowestCar.totalTime} min)</p>
+            <p class="text-sm text-gray-600">Gargalo: ${highlights.slowestCar.slowestStepName || 'N/A'}</p>
+        </div>`;
+    }
+    if (highlights.fastestCar) {
+        html += `
+        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg shadow-sm text-center">
+            <p class="text-sm font-semibold text-blue-800">⚡ ATENDIMENTO MAIS RÁPIDO</p>
+            <p class="text-xl font-bold text-blue-900 mt-1">${highlights.fastestCar.licensePlate} (${highlights.fastestCar.totalTime} min)</p>
+            <p class="text-sm text-gray-600">${Array.from(highlights.fastestCar.steps).join(', ')}</p>
+        </div>`;
+    }
 
-    // 3. Calcula a taxa de desistência
-    const totalOpportunities = totalFinalizedToday + totalLostToday;
-    const lostRate = totalOpportunities > 0 ? ((totalLostToday / totalOpportunities) * 100).toFixed(1) : 0;
+    container.innerHTML = html || `<p class="col-span-full text-center text-gray-500 p-4">Aguardando mais dados para gerar destaques...</p>`;
+}
 
-    // NOVO: Verifica se há dados para exibir. Se não, mostra uma mensagem.
-    if (totalOpportunities === 0) {
-        container.innerHTML = `
-            <div class="col-span-full p-6 bg-gray-50 rounded-lg text-center border border-gray-200">
-                <p class="text-gray-600">Não há dados de serviços finalizados ou perdidos hoje para gerar relatórios. 📊</p>
-            </div>`;
+/**
+ * PASSO 2: Renderiza os cards de métricas de performance.
+ * @param {Object} metrics - O objeto com as métricas calculadas.
+ */
+function renderPerformanceMetrics(metrics) {
+    const teamContainer = document.getElementById('team-metrics-container');
+    const stepContainer = document.getElementById('step-metrics-container');
+    if (!teamContainer || !stepContainer) return;
+
+    teamContainer.innerHTML = Object.entries(metrics.mechanicMetrics)
+        .filter(([, data]) => data.carCount > 0) // Mostra apenas quem trabalhou
+        .map(([name, data]) => `
+        <div class="p-4 bg-white rounded-lg shadow-sm border text-center">
+            <p class="text-base font-semibold text-gray-800">${name}</p>
+            <p class="text-3xl font-bold text-blue-600 mt-1">${data.averageTime} min</p>
+            <p class="text-sm text-gray-500">Média em ${data.carCount} carro(s)</p>
+        </div>`).join('');
+
+    stepContainer.innerHTML = Object.entries(metrics.stepMetrics).map(([name, data]) => `
+        <div class="p-4 bg-gray-50 rounded-lg shadow-sm border text-center">
+            <p class="text-base font-semibold text-gray-700">${name}</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1">${data.averageTime} min</p>
+            <p class="text-sm text-gray-500">Média em ${data.carCount} serviço(s)</p>
+        </div>`).join('');
+}
+
+/**
+ * Renderiza a tabela HTML com o histórico detalhado dos atendimentos do dia.
+ * @param {Array} reportData - Os dados processados do relatório.
+ */
+function renderDailyHistoryTable(reportData) {
+    const container = document.getElementById('daily-history-container');
+    if (!container) return;
+
+    if (reportData.length === 0) {
+        container.innerHTML = `<p class="p-4 text-center text-gray-500">Nenhum atendimento finalizado hoje para exibir no histórico.</p>`;
         return;
     }
 
-    // 4. Renderiza os cards
-    container.innerHTML = `
-        <div class="p-4 bg-red-100 rounded-lg shadow text-center border border-red-200">
-            <p class="text-sm font-medium text-red-800">SERVIÇOS PERDIDOS (HOJE)</p>
-            <p class="text-4xl font-bold text-red-900 mt-1">${totalLostToday}</p>
-        </div>
-        <div class="p-4 bg-orange-100 rounded-lg shadow text-center border border-orange-200">
-            <p class="text-sm font-medium text-orange-800">TAXA DE DESISTÊNCIA</p>
-            <p class="text-4xl font-bold text-orange-900 mt-1">${lostRate}%</p>
-        </div>
-        <!-- Outros cards podem ser adicionados aqui -->
+    const tableHTML = `
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carro (Placa)</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendedor</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responsáveis</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Etapas</th>
+                    <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Início</th>
+                    <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Término</th>
+                    <th class="px-5 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Duração Total</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                ${reportData.map(item => {
+                    const formatTime = (date) => date ? date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+
+                    return `
+                        <tr>
+                            <td class="px-5 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-gray-900">${item.carModel}</div>
+                                <div class="text-sm text-gray-500">${item.licensePlate}</div>
+                            </td>
+                            <td class="px-5 py-4 whitespace-nowrap text-sm text-gray-700">${item.vendedorName || 'N/A'}</td>
+                            <td class="px-5 py-4 whitespace-nowrap text-sm text-gray-700">${Array.from(item.mechanics).join(', ')}</td>
+                            <td class="px-5 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <div class="flex flex-wrap gap-1">
+                                    ${Array.from(item.steps).map(step => `<span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">${step}</span>`).join('')}
+                                </div>
+                            </td>
+                            <td class="px-5 py-4 whitespace-nowrap text-center text-sm text-gray-600">${formatTime(item.startTime)}</td>
+                            <td class="px-5 py-4 whitespace-nowrap text-center text-sm text-gray-600">${formatTime(item.endTime)}</td>
+                            <td class="px-5 py-4 whitespace-nowrap text-center">
+                                <span class="text-sm font-bold ${item.totalTime > 45 ? 'text-red-600' : 'text-green-600'}">
+                                    ${item.totalTime} min
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
     `;
+
+    container.innerHTML = tableHTML;
 }
 
 
