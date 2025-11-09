@@ -1,4 +1,3 @@
-
 import { state } from './appState.js';
 import { MANAGER_ROLE, VENDEDOR_ROLE, MECANICO_ROLE, ALIGNER_ROLE } from './auth.js';
 import { getSortedAlignmentQueue } from './alignment.js';
@@ -74,43 +73,26 @@ export function renderServiceQueues(jobs) {
     const tireShopJobs = [];
 
     // Ordena por prioridade primeiro, depois por timestamp
-    jobs.sort((a, b) => {
-        // Para cada tipo de fila, calcula a prioridade
-        const priorityA = getServicePriority(a, false); // Mecânico
-        const priorityB = getServicePriority(b, false);
-        
-        if (priorityA !== priorityB) {
-            return priorityA - priorityB; // Menor número = maior prioridade
-        }
-        
-        // Se mesma prioridade, ordena por timestamp
-        return getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp);
-    });
+    jobs.sort((a, b) => getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp));
 
     jobs.forEach(job => {
-        // Serviço Geral: mostra na fila do mecânico se GS está pendente
-        // Mas também mostra se GS está concluído mas TS ainda está pendente (para mostrar estado)
+        // Extrai os status para facilitar a leitura
         const isGsPending = job.statusGS === 'Pendente';
-        const isGsCompleted = job.statusGS === 'Serviço Geral Concluído';
         const isTsPending = job.statusTS === 'Pendente';
-        const isTsCompleted = job.statusTS === 'Serviço Pneus Concluído';
-        const hasTs = job.statusTS !== null && job.statusTS !== undefined;
         
-        // Mostra na fila do mecânico se GS está pendente OU se GS está concluído mas TS ainda está pendente
-        if (state.MECHANICS.includes(job.assignedMechanic)) {
-            if (isGsPending || (isGsCompleted && hasTs && isTsPending)) {
-                groupedJobs[job.assignedMechanic].push(job);
-            }
+        // REGRA DE EXIBIÇÃO CORRIGIDA:
+        // 1. Fila do Mecânico Geral:
+        //    - O serviço deve aparecer se o status do Serviço Geral (GS) for 'Pendente'.
+        if (job.assignedMechanic && state.MECHANICS.includes(job.assignedMechanic) && isGsPending) {
+             groupedJobs[job.assignedMechanic].push(job);
         }
         
-        // Mostra na fila do borracheiro se TS está pendente
-        // Mas também mostra se TS está concluído mas GS ainda está pendente (para mostrar estado)
-        if (job.assignedTireShop === state.TIRE_SHOP_MECHANIC) {
-            if (isTsPending || (isTsCompleted && isGsPending)) {
-                tireShopJobs.push(job);
-            }
+        // 2. Fila do Borracheiro:
+        //    - O serviço deve aparecer se o status do Serviço de Pneus (TS) for 'Pendente'.
+        if (job.assignedTireShop === state.TIRE_SHOP_MECHANIC && isTsPending) {
+             tireShopJobs.push(job);
         }
-    });
+    }); // <- Esta é a chave de fechamento correta para o forEach
 
     mechanicsContainer.innerHTML = '';
     
@@ -199,28 +181,30 @@ export function renderServiceQueues(jobs) {
         
         const jobListHTML = mechanicJobs.map(job => {
             const isGsPending = job.statusGS === 'Pendente';
-            const isGsCompleted = job.statusGS === 'Serviço Geral Concluído';
             const isTsPending = job.statusTS === 'Pendente';
-            const isTsCompleted = job.statusTS === 'Serviço Pneus Concluído';
             const hasTs = job.statusTS !== null && job.statusTS !== undefined;
             
             let statusText = '';
             let statusColor = 'text-gray-500';
             
-            if (isTsPending && hasTs) {
+            // NOVA LÓGICA DE STATUS
+            if (hasTs && isTsPending) {
                 statusText = `(Aguardando Pneus)`;
-                statusColor = 'text-orange-500';
-            } else if (isGsCompleted && !hasTs) {
-                statusText = `(GS Concluído)`;
-                statusColor = 'text-green-600';
-            } else if (isGsCompleted && isTsCompleted) {
-                statusText = `(Ambos Concluídos)`;
-                statusColor = 'text-green-600';
+                statusColor = 'text-orange-500'; // Laranja para indicar espera
             }
             
+
             const canDefineService = state.currentUserRole === MANAGER_ROLE || state.currentUserRole === VENDEDOR_ROLE;
             const isDefined = job.isServiceDefined;
-            const canMarkReady = isGsPending && isDefined;
+            
+            // LÓGICA DO BOTÃO
+            const canMarkReady = isGsPending && isDefined && (!hasTs || !isTsPending);
+
+            // LÓGICA DE STATUS VISUAL
+            if (hasTs && isTsPending) {
+                statusText = `(Aguardando Pneus)`;
+                statusColor = 'text-orange-500'; // Laranja para indicar espera
+            }
 
             let descriptionHTML = '';
             let clickHandler = '';
@@ -247,7 +231,7 @@ export function renderServiceQueues(jobs) {
                     <button onclick="event.stopPropagation(); showServiceReadyConfirmation('${job.id}', 'GS')"
                             class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                             ${!canMarkReady ? 'disabled' : ''}>
-                        ${canMarkReady ? 'Pronto' : (isGsCompleted ? 'Concluído' : 'Aguardando')}
+                        ${canMarkReady ? 'Pronto' : 'Aguardando'}
                     </button>
                 </li>
             `;
@@ -315,27 +299,19 @@ function renderMechanicView(jobs, groupedJobs) {
 
     const jobListHTML = myJobs.map(job => {
         const isGsPending = job.statusGS === 'Pendente';
-        const isGsCompleted = job.statusGS === 'Serviço Geral Concluído';
         const isTsPending = job.statusTS === 'Pendente';
-        const isTsCompleted = job.statusTS === 'Serviço Pneus Concluído';
         const hasTs = job.statusTS !== null && job.statusTS !== undefined;
         
         let statusText = '';
         let statusColor = 'text-gray-500';
         
-        if (isTsPending && hasTs) {
+        if (hasTs && isTsPending) {
             statusText = `(Aguardando Pneus)`;
             statusColor = 'text-orange-500';
-        } else if (isGsCompleted && !hasTs) {
-            statusText = `(GS Concluído)`;
-            statusColor = 'text-green-600';
-        } else if (isGsCompleted && isTsCompleted) {
-            statusText = `(Ambos Concluídos)`;
-            statusColor = 'text-green-600';
         }
         
         const isDefined = job.isServiceDefined;
-        const canMarkReady = isGsPending && isDefined;
+        const canMarkReady = isGsPending && isDefined && (!hasTs || !isTsPending);
         
         const descriptionHTML = isDefined
             ? `<p class="text-sm ${statusColor}">${job.serviceDescription ? job.serviceDescription.substring(0, 30) + '...' : 'Avaliação'} ${statusText}</p>`
@@ -350,7 +326,7 @@ function renderMechanicView(jobs, groupedJobs) {
                 <button onclick="event.stopPropagation(); showServiceReadyConfirmation('${job.id}', 'GS')"
                         class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         ${!canMarkReady ? 'disabled' : ''}>
-                    ${canMarkReady ? 'Pronto' : (isGsCompleted ? 'Concluído' : 'Aguardando')}
+                    ${canMarkReady ? 'Pronto' : 'Aguardando'}
                 </button>
             </li>
         `;
@@ -914,6 +890,7 @@ function renderHighlights(highlights) {
  * @param {Object} metrics - O objeto com as métricas calculadas.
  */
 function renderPerformanceMetrics(metrics) {
+    if (!metrics) return;
     const teamContainer = document.getElementById('team-metrics-container');
     const stepContainer = document.getElementById('step-metrics-container');
     if (!teamContainer || !stepContainer) return;
