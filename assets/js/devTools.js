@@ -1,11 +1,12 @@
 // assets/js/devTools.js
 import { state } from './appState.js';
-import { db, collection, addDoc, SERVICE_COLLECTION_PATH, ALIGNMENT_COLLECTION_PATH } from './firebaseConfig.js';
+import { db, collection, addDoc, getDocs, writeBatch, SERVICE_COLLECTION_PATH, ALIGNMENT_COLLECTION_PATH } from './firebaseConfig.js';
 import { Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 /**
  * Ferramentas de desenvolvedor para auxiliar nos testes e na depuração.
- * Para usar, abra o console do navegador e chame `seedData()`.
+ * Para usar, abra o console do navegador e chame `seed('finalized')`, `seed('active')`, etc.
+ * Ou chame `clearAllData()` para limpar os dados de teste.
  */
 
 const SAMPLE_PLATES = ["BRA2E19", "RIO2A18", "SAO2D17", "FLN2C16", "BHZ2B15", "POA2A14", "REC2E13", "MAN2D12", "CWB2C11", "BSB2B10"];
@@ -27,16 +28,26 @@ function getRandomFutureTimestamp(baseTime, minMinutes, maxMinutes) {
 }
 
 /**
- * Povoa o banco de dados com dados de teste para o dia atual.
- * ATENÇÃO: Isso adicionará dados reais ao seu Firestore.
+ * Função principal para popular o banco de dados com diferentes cenários de teste.
+ * @param {'finalized' | 'active' | 'payment' | 'lost'} scenario - O cenário a ser gerado.
  */
-async function seedDatabase() {
-    if (!confirm("Tem certeza que deseja popular o banco de dados com 15 atendimentos de teste para o dia de hoje?")) {
+async function seedDatabase(scenario = 'finalized') {
+    const scenarios = {
+        finalized: { count: 15, status: 'Finalizado', message: 'atendimentos FINALIZADOS para o dia de hoje' },
+        active: { count: 10, status: 'Pendente', message: 'atendimentos ATIVOS em várias etapas' },
+        payment: { count: 5, status: 'Pronto para Pagamento', message: 'atendimentos PRONTOS PARA PAGAMENTO' },
+        lost: { count: 3, status: 'Perdido', message: 'atendimentos MARCADOS COMO PERDIDOS' }
+    };
+
+    const currentScenario = scenarios[scenario];
+    if (!currentScenario) {
+        return console.error(`Cenário "${scenario}" inválido. Use um dos seguintes: ${Object.keys(scenarios).join(', ')}`);
+    }
+
+    if (!confirm(`Tem certeza que deseja popular o banco de dados com ${currentScenario.count} ${currentScenario.message}?`)) {
         console.log("Operação de povoamento cancelada.");
         return;
     }
-
-    console.log("🚀 Iniciando o povoamento do banco de dados...");
 
     const vendors = state.users.filter(u => u.role === 'vendedor' || u.role === 'manager').map(u => u.username);
     if (vendors.length === 0) vendors.push("Gerente");
@@ -47,10 +58,12 @@ async function seedDatabase() {
         return;
     }
 
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0); // Hoje às 8:00
+    console.log(`🚀 Iniciando povoamento para o cenário: ${scenario.toUpperCase()}`);
 
-    for (let i = 0; i < 15; i++) {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+
+    for (let i = 0; i < currentScenario.count; i++) {
         const plate = `${getRandomItem(SAMPLE_PLATES).substring(0, 3)}${Math.floor(100 + Math.random() * 900)}`;
         const model = getRandomItem(SAMPLE_MODELS);
         const vendor = getRandomItem(vendors);
@@ -62,7 +75,7 @@ async function seedDatabase() {
 
         if (!hasService && !hasAlignment) continue; // Garante que todo carro tenha pelo menos um serviço
 
-        const startTime = getRandomFutureTimestamp(startOfDay, i * 15, i * 15 + 10);
+        const startTime = getRandomFutureTimestamp(startOfDay, i * 10, i * 10 + 5);
         let lastCompletionTime = startTime.toDate();
 
         let gsCompletedAt = null;
@@ -77,7 +90,11 @@ async function seedDatabase() {
             lastCompletionTime = tsCompletedAt.toDate();
         }
 
-        let serviceFinalizedAt = Timestamp.fromDate(lastCompletionTime);
+        // Define o status principal com base no cenário
+        const mainStatus = currentScenario.status;
+        const isFinalized = mainStatus === 'Finalizado';
+
+        let finalizedAt = isFinalized ? Timestamp.fromDate(lastCompletionTime) : null;
 
         let serviceJobId = null;
 
@@ -87,14 +104,14 @@ async function seedDatabase() {
                 licensePlate: plate, carModel: model, vendedorName: vendor,
                 assignedMechanic: mechanic,
                 assignedTireShop: hasTires ? state.TIRE_SHOP_MECHANIC : null,
-                status: 'Finalizado',
-                statusGS: 'Serviço Geral Concluído',
-                statusTS: hasTires ? 'Serviço Pneus Concluído' : null,
+                status: mainStatus,
+                statusGS: isFinalized ? 'Serviço Geral Concluído' : (Math.random() > 0.5 ? 'Serviço Geral Concluído' : 'Pendente'),
+                statusTS: hasTires ? (isFinalized ? 'Serviço Pneus Concluído' : 'Pendente') : null,
                 requiresAlignment: hasAlignment,
                 timestamp: startTime,
                 gsCompletedAt: gsCompletedAt,
                 tsCompletedAt: tsCompletedAt,
-                finalizedAt: serviceFinalizedAt,
+                finalizedAt: finalizedAt,
                 serviceDescription: "Serviço de teste",
                 isServiceDefined: true,
                 type: 'Serviço Geral',
@@ -106,11 +123,19 @@ async function seedDatabase() {
         // Cria o Alinhamento se necessário
         if (hasAlignment) {
             const alignmentStartTime = hasService ? Timestamp.fromDate(lastCompletionTime) : startTime;
-            const alignmentFinalizedAt = getRandomFutureTimestamp(alignmentStartTime.toDate(), 15, 35);
+            const alignmentFinalizedAt = isFinalized ? getRandomFutureTimestamp(alignmentStartTime.toDate(), 15, 35) : null;
+
+            let alignmentStatus = 'Aguardando Serviço Geral';
+            if (!hasService || newJob.statusGS === 'Serviço Geral Concluído') {
+                alignmentStatus = 'Aguardando';
+            }
+            if (mainStatus === 'Finalizado' || mainStatus === 'Pronto para Pagamento') {
+                alignmentStatus = mainStatus;
+            }
 
             const newAlignment = {
                 licensePlate: plate, carModel: model, vendedorName: vendor,
-                status: 'Finalizado',
+                status: alignmentStatus,
                 timestamp: alignmentStartTime,
                 finalizedAt: alignmentFinalizedAt,
                 serviceJobId: serviceJobId, // Linka com o serviço geral, se houver
@@ -122,5 +147,33 @@ async function seedDatabase() {
     console.log("✅ Povoamento do banco de dados concluído com sucesso!");
 }
 
-// Expor a função para o escopo global (window) para ser chamada pelo console
-window.seedData = seedDatabase;
+/**
+ * Limpa TODOS os dados das coleções de serviço e alinhamento.
+ * Use com extremo cuidado.
+ */
+async function clearAllData() {
+    if (!confirm("🛑 CUIDADO! Você está prestes a DELETAR TODOS os registros de 'serviceJobs' e 'alignmentQueue'. Esta ação não pode ser desfeita. Deseja continuar?")) {
+        console.log("Operação de limpeza cancelada.");
+        return;
+    }
+
+    console.log("🗑️ Iniciando limpeza completa dos dados de teste...");
+
+    const collectionsToClear = [SERVICE_COLLECTION_PATH, ALIGNMENT_COLLECTION_PATH];
+    const batch = writeBatch(db);
+
+    for (const path of collectionsToClear) {
+        const snapshot = await getDocs(collection(db, ...path));
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        console.log(`- ${snapshot.size} documentos marcados para exclusão em "${path.slice(-1)}".`);
+    }
+
+    await batch.commit();
+    console.log("✅ Limpeza concluída com sucesso!");
+}
+
+// Expor as funções para o escopo global (window) para serem chamadas pelo console
+window.seed = seedDatabase;
+window.clearAllData = clearAllData;
