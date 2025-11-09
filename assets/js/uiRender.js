@@ -71,24 +71,26 @@ export function renderServiceQueues(jobs) {
     const groupedJobs = {};
     [...state.MECHANICS, state.TIRE_SHOP_MECHANIC].forEach(m => groupedJobs[m] = []); // Inclui 'Borracheiro'
     const tireShopJobs = [];
+    
+    // **REFORÇO DA LÓGICA ANTIGA**: Filtra apenas os jobs com status 'Pendente' para as filas de trabalho.
+    // A lista 'jobs' recebida pode conter também os 'Prontos para Pagamento'.
+    const pendingJobs = jobs.filter(job => job.status === 'Pendente');
+    
+    // Ordena por timestamp
+    pendingJobs.sort((a, b) => getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp));
 
-    // Ordena por prioridade primeiro, depois por timestamp
-    jobs.sort((a, b) => getTimestampSeconds(a.timestamp) - getTimestampSeconds(b.timestamp));
-
-    jobs.forEach(job => {
-        // Extrai os status para facilitar a leitura
+    pendingJobs.forEach(job => {
         const isGsPending = job.statusGS === 'Pendente';
         const isTsPending = job.statusTS === 'Pendente';
         
-        // REGRA DE EXIBIÇÃO CORRIGIDA:
         // 1. Fila do Mecânico Geral:
-        //    - O serviço deve aparecer se o status do Serviço Geral (GS) for 'Pendente'.
+        // Agrupa na fila do Mecânico Geral se o serviço dele estiver pendente.
         if (job.assignedMechanic && state.MECHANICS.includes(job.assignedMechanic) && isGsPending) {
              groupedJobs[job.assignedMechanic].push(job);
         }
         
         // 2. Fila do Borracheiro:
-        //    - O serviço deve aparecer se o status do Serviço de Pneus (TS) for 'Pendente'.
+        // Agrupa na fila do Borracheiro se o serviço de pneus estiver pendente.
         if (job.assignedTireShop === state.TIRE_SHOP_MECHANIC && isTsPending) {
              tireShopJobs.push(job);
         }
@@ -98,7 +100,7 @@ export function renderServiceQueues(jobs) {
     
     // Se for mecânico, chama a função de renderização específica e encerra
     if (state.currentUserRole === MECANICO_ROLE) {
-        renderMechanicView(jobs, groupedJobs);
+        renderMechanicView(pendingJobs, groupedJobs);
         return;
     }
     monitorContainer.innerHTML = '';
@@ -187,17 +189,9 @@ export function renderServiceQueues(jobs) {
             let statusText = '';
             let statusColor = 'text-gray-500';
             
-            // NOVA LÓGICA DE STATUS
-            if (hasTs && isTsPending) {
-                statusText = `(Aguardando Pneus)`;
-                statusColor = 'text-orange-500'; // Laranja para indicar espera
-            }
-            
-
             const canDefineService = state.currentUserRole === MANAGER_ROLE || state.currentUserRole === VENDEDOR_ROLE;
             const isDefined = job.isServiceDefined;
             
-            // LÓGICA DO BOTÃO
             const canMarkReady = isGsPending && isDefined && (!hasTs || !isTsPending);
 
             // LÓGICA DE STATUS VISUAL
