@@ -74,118 +74,81 @@ export function setupRealtimeListeners() {
     window._finalizedAlignmentListener(); // Unsubscribe do listener anterior
   }
 
-  // OTIMIZAÇÃO: Query separada para serviços ativos (mais eficiente)
-  const activeServiceQuery = query(
-    collection(db, ...SERVICE_COLLECTION_PATH),
-    where('status', 'in', ['Pendente', 'Pronto para Pagamento'])
-  );
-
-  // Calcula timestamp do início do dia para filtro no cliente
+  // Calcula o início do dia para filtrar finalizados no cliente
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const startOfTodayTimestamp = Timestamp.fromDate(startOfToday);
 
-  // REVERSÃO TEMPORÁRIA: A query otimizada requer um índice composto no Firestore.
-  // Voltando para a busca ampla e filtro no cliente para evitar erros até que o índice seja criado.
-  const finalizedServiceQuery = query(
+  // Listener Unificado para Serviços (ativos, prontos e finalizados)
+  const serviceQuery = query(
     collection(db, ...SERVICE_COLLECTION_PATH),
-    where('status', '==', 'Finalizado')
+    where('status', 'in', ['Pendente', 'Pronto para Pagamento', 'Finalizado', 'Serviço Geral Concluído'])
   );
 
-  // Listener para serviços ativos
-  window._serviceListener = onSnapshot(activeServiceQuery, (snapshot) => {
+  window._serviceListener = onSnapshot(serviceQuery, (snapshot) => {
+    const allJobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
+
+    // Filtra os jobs no cliente, similar à lógica antiga
     state.serviceJobs = [];
-    snapshot.forEach((doc) => {
-      const job = { id: doc.id, ...doc.data() };
-      state.serviceJobs.push(job);
+    state.finalizedToday.services = [];
+
+    allJobs.forEach(job => {
+      if (job.status === 'Finalizado') {
+        const finalizedSeconds = getTimestampSeconds(job.finalizedAt);
+        if (finalizedSeconds >= startOfTodaySeconds) {
+          state.finalizedToday.services.push(job);
+        }
+      } else {
+        state.serviceJobs.push(job);
+      }
     });
 
-    // Renderiza após mudanças
+    // Renderiza tudo para garantir a sincronia da UI
     renderServiceQueues(state.serviceJobs);
     renderReadyJobs(state.serviceJobs, state.alignmentQueue);
     calculateAndRenderDailyStats();
     updateRemovalList();
   }, (error) => {
-    console.error("Erro no listener de Serviços Ativos:", error);
+    console.error("Erro no listener de Serviços:", error);
     alertUser("Erro de conexão (Serviços): " + error.message);
   });
 
-  // Listener separado para serviços finalizados (filtra hoje no cliente)
-  window._finalizedServiceListener = onSnapshot(finalizedServiceQuery, (snapshot) => {
-    state.finalizedToday.services = [];
+  // Listener Unificado para Alinhamentos (ativos, prontos e finalizados)
+  const alignmentQuery = query(
+    collection(db, ...ALIGNMENT_COLLECTION_PATH),
+    where('status', 'in', ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral', 'Pronto para Pagamento', 'Finalizado'])
+  );
+
+  window._alignmentListener = onSnapshot(alignmentQuery, (snapshot) => {
+    const allCars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
-    
-    snapshot.forEach((doc) => {
-      const job = { id: doc.id, ...doc.data() };
-      // Filtra apenas os finalizados hoje usando função helper
-      if (job.finalizedAt) {
-        const finalizedSeconds = getTimestampSeconds(job.finalizedAt);
+
+    // Filtra os alinhamentos no cliente
+    state.alignmentQueue = [];
+    state.finalizedToday.alignments = [];
+
+    allCars.forEach(car => {
+      if (car.status === 'Finalizado') {
+        const finalizedSeconds = getTimestampSeconds(car.finalizedAt);
         if (finalizedSeconds >= startOfTodaySeconds) {
-          state.finalizedToday.services.push(job);
+          state.finalizedToday.alignments.push(car);
         }
+      } else {
+        state.alignmentQueue.push(car);
       }
     });
 
-    // Atualiza estatísticas quando serviços finalizados mudam
-    calculateAndRenderDailyStats();
-  }, (error) => {
-    console.error("Erro no listener de Serviços Finalizados:", error);
-  });
-
-  // OTIMIZAÇÃO: Query separada para alinhamentos ativos
-  const activeAlignmentQuery = query(
-    collection(db, ...ALIGNMENT_COLLECTION_PATH),
-    where('status', 'in', ['Aguardando', 'Em Atendimento', 'Aguardando Serviço Geral', 'Pronto para Pagamento'])
-  );
-
-  // REVERSÃO TEMPORÁRIA: Mesma razão acima.
-  const finalizedAlignmentQuery = query(
-    collection(db, ...ALIGNMENT_COLLECTION_PATH),
-    where('status', '==', 'Finalizado')
-  );
-
-  // Listener para alinhamentos ativos
-  window._alignmentListener = onSnapshot(activeAlignmentQuery, (snapshot) => {
-    state.alignmentQueue = [];
-    snapshot.forEach((doc) => {
-      const car = { id: doc.id, ...doc.data() };
-      state.alignmentQueue.push(car);
-    });
-
-    // Renderiza após mudanças
     renderAlignmentQueue(state.alignmentQueue);
     renderAlignmentMirror(state.alignmentQueue);
     renderReadyJobs(state.serviceJobs, state.alignmentQueue);
     calculateAndRenderDailyStats();
     updateRemovalList();
   }, (error) => {
-    console.error("Erro no listener de Alinhamentos Ativos:", error);
+    console.error("Erro no listener de Alinhamentos:", error);
     alertUser("Erro de conexão (Alinhamento): " + error.message);
   });
 
-  // Listener separado para alinhamentos finalizados (filtra hoje no cliente)
-  window._finalizedAlignmentListener = onSnapshot(finalizedAlignmentQuery, (snapshot) => {
-    state.finalizedToday.alignments = [];
-    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
-    
-    snapshot.forEach((doc) => {
-      const car = { id: doc.id, ...doc.data() };
-      // Filtra apenas os finalizados hoje usando função helper
-      if (car.finalizedAt) {
-        const finalizedSeconds = getTimestampSeconds(car.finalizedAt);
-        if (finalizedSeconds >= startOfTodaySeconds) {
-          state.finalizedToday.alignments.push(car);
-        }
-      }
-    });
-
-    // Atualiza estatísticas quando alinhamentos finalizados mudam
-    calculateAndRenderDailyStats();
-  }, (error) => {
-    console.error("Erro no listener de Alinhamentos Finalizados:", error);
-  });
-
-  console.log("📡 Firestore listeners ativos (serviços ativos, alinhamentos ativos, finalizados hoje)");
+  console.log("📡 Firestore listeners unificados ativos (serviços e alinhamentos).");
 }
 
 /* ============================================================================
@@ -222,11 +185,17 @@ export async function markServiceReady(docId, serviceType) { // serviceType é '
     // Um serviço não é necessário se statusGS ou statusTS for null (não foi atribuído)
     const isGsReady = job.statusGS === 'Serviço Geral Concluído' || job.statusGS === null || job.statusGS === undefined;
     const isTsReady = job.statusTS === 'Serviço Pneus Concluído' || job.statusTS === null || job.statusTS === undefined;
+    const isGsPending = job.statusGS === 'Pendente';
 
-    console.log(`🔍 Verificação de conclusão - GS: ${job.statusGS} (${isGsReady}), TS: ${job.statusTS} (${isTsReady})`);
+    // Se o serviço geral ainda está pendente, não faz nada além de atualizar o status do pneu.
+    // A UI será atualizada pelo listener.
+    if (serviceType === 'TS' && isGsPending) {
+      console.log(`⏳ Serviço de pneus concluído, mas aguardando GS. Nenhuma ação de fluxo necessária.`);
+      return;
+    }
 
+    // Se ambos estiverem prontos (ou se o GS foi o último a ser concluído), decide o próximo passo.
     if (isGsReady && isTsReady) {
-      // 5. Se ambos estiverem prontos, decide o próximo passo.
       if (job.requiresAlignment === true) {
         // Se requer alinhamento, encontra o serviço de alinhamento associado.
         const alignQuery = query(
@@ -257,9 +226,6 @@ export async function markServiceReady(docId, serviceType) { // serviceType é '
         await updateDoc(serviceDocRef, { status: 'Pronto para Pagamento' });
         console.log(`✅ Serviço concluído e enviado para pagamento: ${docId}`);
       }
-    } else {
-      // Serviço parcialmente concluído - apenas um dos sub-serviços foi concluído
-      console.log(`⏳ Serviço parcialmente concluído - aguardando conclusão do outro serviço: ${docId}`);
     }
   } catch (error) {
     console.error("Erro ao marcar serviço como pronto (Firestore):", error);
