@@ -15,7 +15,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  where
+  where,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { state } from "./appState.js";
 
@@ -90,5 +91,6 @@ export {
   onSnapshot,
   query,
   orderBy,
-  where
+  where,
+  writeBatch
 };
