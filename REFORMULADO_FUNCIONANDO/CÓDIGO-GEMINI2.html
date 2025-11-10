@@ -1106,7 +1106,8 @@
             e.preventDefault();
             if (!isLoggedIn) return alertUser("Você precisa estar logado para cadastrar serviços.");
 
-            const vendedorName = document.getElementById('vendedorName').value.trim();
+            // CORREÇÃO: Pega o nome do usuário logado diretamente do estado da sessão.
+            const vendedorName = currentUserName;
             const licensePlate = document.getElementById('licensePlate').value.trim().toUpperCase();
             const carModel = document.getElementById('carModel').value.trim();
             
@@ -1164,7 +1165,8 @@
                 statusTS: willTireChange ? STATUS_PENDING : null, 
                 requiresAlignment: willAlign,
                 timestamp: isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp(), 
-                registeredBy: userId,
+                gsStartedAt: isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp(), // NOVO: Início automático do serviço
+                registeredBy: userId, // Mantido para rastreabilidade
                 id: `job_${jobIdCounter++}`,
                 type: 'Serviço Geral',
                 finalizedAt: null
@@ -1191,6 +1193,7 @@
                             serviceJobId: newJob.id,
                             timestamp: Timestamp.fromMillis(Date.now() + 10), 
                             addedBy: userId,
+                    gsStartedAt: newJob.gsStartedAt, // NOVO: Propaga o tempo de início
                             id: `ali_${aliIdCounter++}`,
                             type: 'Alinhamento',
                             finalizedAt: null
@@ -1224,6 +1227,7 @@
                             gsMechanic: newJob.assignedMechanic,
                             timestamp: serverTimestamp(),
                             addedBy: userId,
+                            gsStartedAt: newJob.gsStartedAt, // NOVO: Propaga o tempo de início
                             type: 'Alinhamento',
                             serviceJobId: jobRef.id, 
                             finalizedAt: null
@@ -1254,7 +1258,8 @@
             e.preventDefault();
             if (!isLoggedIn) return alertUser("Você precisa estar logado para cadastrar serviços.");
 
-            const vendedorName = document.getElementById('aliVendedorName').value.trim(); // ATUALIZADO para select
+            // CORREÇÃO: Pega o nome do usuário logado diretamente do estado da sessão.
+            const vendedorName = currentUserName;
             const licensePlate = document.getElementById('aliLicensePlate').value.trim().toUpperCase();
             const carModel = document.getElementById('aliCarModel').value.trim();
             const errorElement = document.getElementById('alignment-error');
@@ -1494,6 +1499,29 @@
             const title = `Excluir Usuário`;
             const message = `Tem certeza que deseja excluir o usuário <strong>${user.username}</strong> (${user.role})? Esta ação é irreversível.`;
             showFinalizeModal(userId, 'user', title, message, 'deleteUser');
+        }
+
+        // NOVO: Wrapper para o modal de confirmação de exclusão de usuário (Req 4)
+        window.showDeleteUserConfirmation = function(userId) {
+            if (currentUserRole !== MANAGER_ROLE) return;
+            const user = systemUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            // Validação para impedir exclusão com serviço em andamento
+            let hasActiveService = false;
+            if (user.role === MECANICO_ROLE) {
+                hasActiveService = serviceJobs.some(job => job.assignedMechanic === user.username && job.status === STATUS_PENDING);
+            } else if (user.role === ALIGNER_ROLE) {
+                hasActiveService = alignmentQueue.some(car => car.status === STATUS_ATTENDING);
+            }
+
+            if (hasActiveService) {
+                alertUser("Não é possível excluir este profissional enquanto houver serviços em andamento.");
+                return;
+            }
+
+            // Se não houver serviços ativos, prossegue com a confirmação
+            confirmDeleteUser(userId);
         }
 
         window.confirmServiceReady = function(serviceType) {
@@ -2186,6 +2214,13 @@
                     let cursorClass = '';
                     let actionButtonHTML = '';
                     
+                    // O botão "Pronto" agora substitui o "Iniciar" e depende apenas da definição do serviço.
+                    actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
+                                                class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed h-7"
+                                                ${!isDefined || isTsPending ? 'disabled' : ''} title="${isTsPending ? 'Aguardando Pneus' : 'Marcar como Pronto'}">
+                                            Pronto
+                                        </button>`;
+
                     if (!isDefined) {
                         descriptionHTML = '<span class="font-bold text-red-600">(Aguardando Definição de Serviço)</span>';
                         if (isManager) {
@@ -2195,16 +2230,6 @@
                         }
                     } else {
                         descriptionHTML = `<p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 30)}... ${statusText}</p>`;
-                    }
-
-                    if (hasStarted) {
-                        actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
-                                                    class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed h-7"
-                                                    ${isReadyButtonDisabled ? 'disabled' : ''} title="${readyButtonTitle}">Pronto</button>`;
-                    } else {
-                        actionButtonHTML = `<button onclick="startGeneralService('${job.id}')"
-                                                    class="text-xs font-medium bg-yellow-500 text-gray-900 py-1 px-3 rounded-full hover:bg-yellow-600 transition h-7"
-                                                    ${!isDefined ? 'disabled' : ''} title="Iniciar atendimento neste carro">Iniciar</button>`;
                     }
 
                     const managerActions = isManager ? `
@@ -2260,28 +2285,17 @@
                         const isTsPending = job.statusTS === STATUS_PENDING;
                         const statusText = isTsPending ? `(Aguardando Pneus)` : '';
                         const statusColor = isTsPending ? 'text-red-500' : 'text-gray-500';
-                        const isDefined = job.isServiceDefined;
-
-                        // NOVO: Trava de segurança do botão "Pronto" (Req 3.3)
-                        const hasStarted = !!job.gsStartedAt;
-                        const isReadyButtonDisabled = !isDefined || isTsPending || !hasStarted;
-                        const readyButtonTitle = isTsPending ? "Aguardando conclusão do serviço de pneus." : !isDefined ? "Aguardando definição do serviço." : "Marcar como pronto";
+                        const isDefined = job.isServiceDefined;                        
                         let actionButtonHTML = '';
 
                         let descriptionHTML = `<p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 40)}... ${statusText}</p>`;
                         if (!isDefined) {
                             descriptionHTML = '<p class="font-bold text-red-600">(Aguardando Definição de Serviço pela Gerência)</p>';
                         }
-
-                        if (hasStarted) {
-                            actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
-                                                        class="text-sm font-semibold bg-green-600 text-white py-2 px-5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed h-10"
-                                                        ${isReadyButtonDisabled ? 'disabled' : ''} title="${readyButtonTitle}">Pronto</button>`;
-                        } else {
-                            actionButtonHTML = `<button onclick="startGeneralService('${job.id}')"
-                                                        class="text-sm font-semibold bg-yellow-500 text-gray-900 py-2 px-5 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50 disabled:cursor-not-allowed h-10"
-                                                        ${!isDefined ? 'disabled' : ''} title="Iniciar atendimento neste carro">Iniciar</button>`;
-                        }
+                        
+                        actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
+                                                    class="text-sm font-semibold bg-green-600 text-white py-2 px-5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed h-10"
+                                                    ${!isDefined || isTsPending ? 'disabled' : ''} title="${isTsPending ? 'Aguardando Pneus' : 'Marcar como Pronto'}">Pronto</button>`;
 
                         return `
                             <li class="p-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-md">
