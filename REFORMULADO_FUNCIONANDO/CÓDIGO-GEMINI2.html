@@ -1044,7 +1044,10 @@
             const container = document.getElementById('user-list-container');
             const emptyMessage = document.getElementById('user-list-empty-message');
 
-            if (users.length === 0) {
+            // HOTFIX 2: Se o container ou a mensagem não existem (ex: visão de vendedor), não faz nada.
+            if (!container || !emptyMessage) return;
+
+            if (users.length === 0) { // A verificação de usuários vem DEPOIS da verificação dos elementos.
                 container.innerHTML = '';
                 container.appendChild(emptyMessage);
                 emptyMessage.style.display = 'block';
