@@ -66,6 +66,26 @@
         }
 
     </style>
+
+    <!-- NOVO: Função global para expandir/recolher texto -->
+    <script>
+        function toggleDescription(jobId) {
+            // Encontra os elementos pelo ID único
+            const shortDesc = document.getElementById(`desc-short-${jobId}`);
+            const fullDesc = document.getElementById(`desc-full-${jobId}`);
+            const button = document.getElementById(`desc-btn-${jobId}`);
+
+            // Se algum elemento não for encontrado, interrompe para evitar erros
+            if (!shortDesc || !fullDesc || !button) return;
+
+            // Alterna a classe 'hidden' para mostrar/esconder os textos
+            shortDesc.classList.toggle('hidden');
+            fullDesc.classList.toggle('hidden');
+
+            // Atualiza o texto do botão
+            button.textContent = fullDesc.classList.contains('hidden') ? 'Ver mais' : 'Ver menos';
+        }
+    </script>
     
 </head>
 <body>
@@ -2206,6 +2226,20 @@
             return 0;
         }
 
+        // NOVO: Adiciona listeners aos botões "Ver mais" após a renderização
+        function addToggleDescriptionListeners() {
+            const buttons = document.querySelectorAll('button[data-job-id]');
+            buttons.forEach(button => {
+                // Remove listener antigo para evitar duplicatas ao re-renderizar
+                button.replaceWith(button.cloneNode(true));
+            });
+            // Adiciona o listener nos novos botões clonados
+            document.querySelectorAll('button[data-job-id]').forEach(button => {
+                const jobId = button.getAttribute('data-job-id');
+                button.addEventListener('click', () => toggleDescription(jobId));
+            });
+        }
+
         function renderServiceQueues(jobs) {
             const mechanicsContainer = document.getElementById('mechanics-queue-display');
             const tireShopList = document.getElementById('tire-shop-list');
@@ -2264,30 +2298,45 @@
                         </div>
                     ` : '';
 
+                    // NOVO: Lógica para "Ver mais/Ver menos"
+                    let descriptionHTML = '';
+                    const descriptionText = job.serviceDescription || 'N/A';
+                    if (descriptionText.length > 15) { // ATUALIZADO: Limite de 15 caracteres
+                        descriptionHTML = `
+                            <div class="overflow-hidden">
+                                <p id="desc-short-${job.id}" class="text-sm ${statusColor}">${descriptionText.substring(0, 15)}...</p>
+                                <p id="desc-full-${job.id}" class="text-sm ${statusColor} hidden break-words">${descriptionText} ${statusText}</p>
+                                <button id="desc-btn-${job.id}" data-job-id="${job.id}" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
+                            </div>
+                        `;
+                    } else {
+                        descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText} ${statusText}</p>`;
+                    }
+
                     return `
-                        <li class="p-3 bg-white border-l-4 border-yellow-500 rounded-md shadow-sm">
-                            <div class="flex justify-between items-center">
+                        <li class="relative p-3 bg-white border-l-4 border-yellow-500 rounded-md shadow-sm min-h-[80px]">
+                            <div class="pr-20"> 
                                 <div>
                                     <p class="font-semibold text-gray-800">${job.licensePlate} (${job.carModel})</p>
-                                    <p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 30)}... ${statusText}</p>
+                                    ${descriptionHTML}
                                 </div>
+                            </div>
+                            <div class="absolute top-3 right-3 flex flex-col items-end space-y-2">
                                 <button onclick="showServiceReadyConfirmation('${job.id}', 'TS')"
                                         class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition h-7">
                                     Pronto
                                 </button>
+                                ${managerActions}
                             </div>
-                            ${managerActions}
                         </li>
                     `;
                  }).join('');
             } else {
                 tireShopList.innerHTML = '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. </p>';
             }
-
             if (MECHANICS.length === 0) {
                  mechanicsContainer.innerHTML = '<p class="text-sm text-red-600 italic p-3 border rounded-md">Nenhum mecânico geral cadastrado. Por favor, adicione mecânicos na Aba de Serviços.</p>';
             }
-
             MECHANICS.forEach(mechanic => {
                 const jobListHTML = groupedJobs[mechanic].map(job => {
                     const isTsPending = job.statusTS === STATUS_PENDING;
@@ -2305,22 +2354,27 @@
                     let cursorClass = '';
                     let actionButtonHTML = '';
                     
-                    // O botão "Pronto" agora substitui o "Iniciar" e depende apenas da definição do serviço.
-                    actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
-                                                class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed h-7"
-                                                ${!isDefined ? 'disabled' : ''} title="${!isDefined ? 'Aguardando definição do serviço' : 'Marcar como Pronto'}">
-                                            Pronto
-                                        </button>`;
-
                     if (!isDefined) {
                         descriptionHTML = '<span class="font-bold text-red-600">(Aguardando Definição de Serviço)</span>';
                         if (isManager) {
                             clickHandler = `onclick="showDefineServiceModal('${job.id}')"`;
                             cursorClass = 'cursor-pointer hover:bg-yellow-100/50 transition duration-150';
-                            descriptionHTML += '<span class="text-xs text-blue-600 block">(Clique p/ definir)</span>';
+                            descriptionHTML += '<span class="text-xs text-blue-600 block mt-1">(Clique p/ definir)</span>';
                         }
                     } else {
-                        descriptionHTML = `<p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 30)}... ${statusText}</p>`;
+                        // NOVO: Lógica para "Ver mais/Ver menos"
+                        const descriptionText = job.serviceDescription || 'N/A';
+                        if (descriptionText.length > 15) { // ATUALIZADO: Limite de 15 caracteres
+                            descriptionHTML = `
+                                <div class="overflow-hidden">
+                                    <p id="desc-short-${job.id}" class="text-sm ${statusColor}">${descriptionText.substring(0, 15)}... ${statusText}</p>
+                                    <p id="desc-full-${job.id}" class="text-sm ${statusColor} hidden break-words">${descriptionText}</p>
+                                    <button id="desc-btn-${job.id}" data-job-id="${job.id}" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
+                                </div>
+                            `;
+                        } else {
+                            descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText} ${statusText}</p>`;
+                        }
                     }
 
                     const managerActions = canEditAndDelete ? `
@@ -2337,15 +2391,21 @@
                     ` : '';
 
                     return `
-                        <li class="p-3 bg-white border-l-4 border-blue-500 rounded-md shadow-sm">
-                            <div class="flex justify-between items-start ${cursorClass}" ${clickHandler}>
+                        <li class="relative p-3 bg-white border-l-4 border-blue-500 rounded-md shadow-sm min-h-[80px]">
+                            <div class="pr-20 ${cursorClass}" ${clickHandler}>
                                 <div>
                                     <p class="font-semibold text-gray-800">${job.licensePlate} (${job.carModel})</p>
                                     ${descriptionHTML}
                                 </div>
-                                ${actionButtonHTML}
                             </div>
-                            ${managerActions}
+                            <div class="absolute top-3 right-3 flex flex-col items-end space-y-2">
+                                <button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
+                                        class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed h-7"
+                                        ${!isDefined ? 'disabled' : ''} title="${!isDefined ? 'Aguardando definição do serviço' : 'Marcar como Pronto'}">
+                                    Pronto
+                                </button>
+                                ${managerActions}
+                            </div>
                         </li>
                     `;
                 }).join('');
@@ -2378,29 +2438,41 @@
                         const statusColor = isTsPending ? 'text-red-500' : 'text-gray-500';
                         const isDefined = job.isServiceDefined;
                         
-                        // HOTFIX: Adiciona o botão "Pronto" para a visão do mecânico.
-                        let actionButtonHTML = `<button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
-                                                        class="text-sm font-medium bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        ${!isDefined ? 'disabled' : ''} title="${!isDefined ? 'Aguardando definição do serviço pela gerência' : 'Marcar como Pronto'}">
-                                                    Pronto
-                                                </button>`;
-
-
-                        let descriptionHTML = `<p class="text-sm ${statusColor}">${job.serviceDescription.substring(0, 40)}... ${statusText}</p>`;
+                        let descriptionHTML = '';
                         if (!isDefined) {
                             descriptionHTML = '<p class="font-bold text-red-600">(Aguardando Definição de Serviço pela Gerência)</p>';
+                        } else {
+                            // NOVO: Lógica para "Ver mais/Ver menos" na visão do mecânico
+                            const descriptionText = job.serviceDescription || 'N/A';
+                            if (descriptionText.length > 15) { // ATUALIZADO: Limite de 15 caracteres
+                                descriptionHTML = `
+                                    <div class="overflow-hidden">
+                                        <p id="desc-short-${job.id}" class="text-sm ${statusColor}">${descriptionText.substring(0, 15)}... ${statusText}</p>
+                                        <p id="desc-full-${job.id}" class="text-sm ${statusColor} hidden break-words">${descriptionText}</p>
+                                        <button id="desc-btn-${job.id}" data-job-id="${job.id}" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
+                                    </div>
+                                `;
+                            } else {
+                                descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText} ${statusText}</p>`;
+                            }
                         }
 
                         return `
-                            <li class="p-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-md">
-                                <div class="flex justify-between items-start">
+                            <li class="relative p-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-md min-h-[100px]">
+                                <div class="pr-24">
                                     <div>
                                         <p class="text-lg font-bold text-gray-800">${job.licensePlate}</p>
                                         <p class="text-md text-gray-600 mb-2">${job.carModel}</p>
                                         ${descriptionHTML}
                                         <p class="text-xs text-gray-400 mt-1">Vendedor: ${job.vendedorName}</p>
                                     </div>
-                                    ${actionButtonHTML}
+                                </div>
+                                <div class="absolute top-4 right-4">
+                                    <button onclick="showServiceReadyConfirmation('${job.id}', 'GS')"
+                                            class="text-sm font-medium bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                            ${!isDefined ? 'disabled' : ''} title="${!isDefined ? 'Aguardando definição do serviço pela gerência' : 'Marcar como Pronto'}">
+                                        Pronto
+                                    </button>
                                 </div>
                             </li>
                         `;
@@ -2417,6 +2489,9 @@
                 }
                 mechanicViewContainer.innerHTML = mechanicViewHTML;
             }
+
+            // NOVO: Adiciona os listeners de evento após o HTML ser inserido no DOM
+            addToggleDescriptionListeners();
         }
 
         function getSortedAlignmentQueue() {
