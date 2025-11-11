@@ -214,7 +214,7 @@
                                         </span>
                                     </h3>
                                     <ul id="tire-shop-list" class="space-y-2">
-                                        <p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. ✅</p>
+                                        <p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. </p>
                                     </ul>
                                 </div>
                             </div>
@@ -268,7 +268,7 @@
                         <div>
                             <h2 class="text-2xl font-semibold mb-6 text-gray-800 border-b pb-2">Fila de Espera (Visão do Alinhador)</h2>
                             <div id="alignment-table-container" class="bg-white rounded-lg shadow-sm overflow-x-auto border border-gray-200">
-                                <p class="text-gray-500 p-4 text-center" id="alignment-empty-message">A fila de alinhamento está vazia. 🎉</p>
+                                <p class="text-gray-500 p-4 text-center" id="alignment-empty-message">A fila de alinhamento está vazia.</p>
                             </div>
                         </div>
                     </div>
@@ -295,7 +295,7 @@
                             <div>
                                 <h2 class="text-xl font-semibold mb-4 text-gray-800">Carros Prontos para Pagamento</h2>
                                 <div id="ready-jobs-container" class="bg-white rounded-lg shadow-sm overflow-x-auto border border-gray-200">
-                                    <p class="text-gray-500 p-4 text-center" id="ready-empty-message">Nenhum carro pronto para pagamento. ⏱️</p>
+                                    <p class="text-gray-500 p-4 text-center" id="ready-empty-message">Nenhum carro pronto para pagamento. </p>
                                 </div>
                             </div>
 
@@ -329,25 +329,25 @@
                                     <!-- Conteúdo dos destaques será injetado aqui -->
                                     <!-- MELHOR DESEMPENHO -->
                                     <div class="p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm text-center">
-                                        <p class="text-sm font-semibold text-green-800">🏅 MELHOR DESEMPENHO</p>
+                                        <p class="text-sm font-semibold text-green-800"> MELHOR DESEMPENHO</p>
                                         <p id="dash-best-performer" class="text-2xl font-bold text-green-900 mt-1">--</p>
                                         <p id="dash-best-performer-avg" class="text-sm text-gray-600">--</p>
                                     </div>
                                     <!-- PIOR DESEMPENHO -->
                                     <div class="p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm text-center">
-                                        <p class="text-sm font-semibold text-red-800">🧱 PIOR DESEMPENHO</p>
+                                        <p class="text-sm font-semibold text-red-800"> PIOR DESEMPENHO</p>
                                         <p id="dash-worst-performer" class="text-2xl font-bold text-red-900 mt-1">--</p>
                                         <p id="dash-worst-performer-avg" class="text-sm text-gray-600">--</p>
                                     </div>
                                     <!-- ATENDIMENTO MAIS LENTO -->
                                     <div class="p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm text-center">
-                                        <p class="text-sm font-semibold text-orange-800">🐢 ATENDIMENTO MAIS LENTO</p>
+                                        <p class="text-sm font-semibold text-orange-800"> ATENDIMENTO MAIS LENTO</p>
                                         <p id="dash-slowest-car" class="text-xl font-bold text-orange-900 mt-1">--</p>
                                         <p id="dash-slowest-car-avg" class="text-sm text-gray-600">--</p>
                                     </div>
                                     <!-- ATENDIMENTO MAIS RÁPIDO -->
                                     <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg shadow-sm text-center">
-                                        <p class="text-sm font-semibold text-blue-800">⚡ ATENDIMENTO MAIS RÁPIDO</p>
+                                        <p class="text-sm font-semibold text-blue-800"> ATENDIMENTO MAIS RÁPIDO</p>
                                         <p id="dash-fastest-car" class="text-xl font-bold text-blue-900 mt-1">--</p>
                                         <p id="dash-fastest-car-avg" class="text-sm text-gray-600">--</p>
                                     </div>
@@ -1217,7 +1217,7 @@
                 if (isDemoMode) {
                     serviceJobs.push(newJob);
                     
-                    let statusMessage = `✅ Simulação: Serviço Geral atribuído a ${assignedMechanic}!`;
+                    let statusMessage = ` Simulação: Serviço Geral atribuído a ${assignedMechanic}!`;
                     if (willTireChange) {
                         statusMessage += ` e Serviço de Pneus ao Borracheiro!`;
                     }
@@ -1276,7 +1276,7 @@
                         await addDoc(collection(db, ALIGNMENT_COLLECTION_PATH), newAlignmentCar);
                     }
                     
-                    messageElement.textContent = `✅ Serviço Geral atribuído a ${assignedMechanic}!`;
+                    messageElement.textContent = ` Serviço Geral atribuído a ${assignedMechanic}!`;
                     if (willTireChange) {
                         messageElement.textContent += ` e Pneus ao Borracheiro!`;
                     }
@@ -1336,7 +1336,7 @@
                 } else {
                     delete newAlignmentCar.id;
                     await addDoc(collection(db, ALIGNMENT_COLLECTION_PATH), newAlignmentCar);
-                    errorElement.textContent = '✅ Cliente adicionado à fila de alinhamento com sucesso!';
+                    errorElement.textContent = ' Cliente adicionado à fila de alinhamento com sucesso!';
                 }
 
                 document.getElementById('alignment-form').reset();
@@ -2265,7 +2265,7 @@
                     `;
                  }).join('');
             } else {
-                tireShopList.innerHTML = '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. ✅</p>';
+                tireShopList.innerHTML = '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. </p>';
             }
 
             if (MECHANICS.length === 0) {
@@ -2343,7 +2343,7 @@
                             </span>
                         </h3>
                         <ul class="space-y-2">
-                            ${jobListHTML.length > 0 ? jobListHTML : '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. ✅</p>'}
+                            ${jobListHTML.length > 0 ? jobListHTML : '<p class="text-sm text-gray-500 italic p-3 border rounded-md">Nenhum carro na fila. </p>'}
                         </ul>
                     </div>
                 `;
@@ -2386,7 +2386,7 @@
                 } else {
                     mechanicViewHTML += `
                         <div class="text-center p-10 bg-white rounded-lg shadow-md border">
-                            <p class="text-2xl mb-2">🎉</p>
+                            <p class="text-2xl mb-2"></p>
                             <p class="text-lg font-medium text-gray-700">Nenhum carro na sua fila no momento.</p>
                             <p class="text-gray-500">Aproveite para organizar a oficina!</p>
                         </div>
@@ -2429,7 +2429,7 @@
             let mirrorHTML = '';
             
             if (activeCars.length === 0) {
-                 mirrorHTML = '<p class="text-sm text-gray-500 italic p-3 text-center">Fila de Alinhamento vazia. ✅</p>';
+                 mirrorHTML = '<p class="text-sm text-gray-500 italic p-3 text-center">Fila de Alinhamento vazia. </p>';
             } else {
                 mirrorHTML = `
                     <ul class="space-y-2">
