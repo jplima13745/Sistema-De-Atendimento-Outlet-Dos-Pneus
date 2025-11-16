@@ -33,9 +33,11 @@ signInAnonymously(auth)
 const MANAGER_ROLE = 'manager';
 const VENDEDOR_ROLE = 'vendedor';
 const ANALISTA_MARKETING_ROLE = 'analista_marketing'; // Novo perfil
+const CLIENT_ROLE = 'cliente'; // NOVO: Perfil para a tela da fila (RF008)
 
 const ALLOWED_MARKETING_PROFILES = [VENDEDOR_ROLE, MANAGER_ROLE, ANALISTA_MARKETING_ROLE];
 const ALLOWED_OPERATIONAL_PROFILES = [VENDEDOR_ROLE, MANAGER_ROLE, 'mecanico', 'aligner'];
+const ALLOWED_CLIENT_PROFILES = [CLIENT_ROLE]; // NOVO
 
 const USERS_COLLECTION_PATH = `/artifacts/local-autocenter-app/public/data/users`;
 const LOG_COLLECTION_PATH = `/artifacts/local-autocenter-app/public/data/access_logs`;
@@ -101,6 +103,9 @@ async function handleLogin(e) {
         } else if (ALLOWED_OPERATIONAL_PROFILES.includes(user.role)) {
             await logAccessAttempt(user.id, user.role, true, 'operacional_system');
             window.location.href = '../Operacional_system/index.html';
+        } else if (ALLOWED_CLIENT_PROFILES.includes(user.role)) { // NOVO: Redirecionamento para a fila (RF008)
+            await logAccessAttempt(user.id, user.role, true, 'customer_queue_display');
+            window.location.href = '../customer_queue_display/index.html';
         } else {
             // RF002: Bloqueia perfis não autorizados
             await logAccessAttempt(user.id, user.role, false, 'any');
@@ -119,11 +124,6 @@ async function handleLogin(e) {
 localStorage.removeItem('currentUser');
 
 document.getElementById('login-form').addEventListener('submit', handleLogin);
-
-// Adiciona um perfil de teste para o Analista de Marketing, caso não exista.
-// Em um ambiente real, isso seria feito pelo painel de admin.
-const marketingUserRef = doc(db, USERS_COLLECTION_PATH, 'analista.mkt');
-setDoc(marketingUserRef, { username: 'analista.mkt', password: 'mkt', role: 'analista_marketing' }, { merge: true });
 
 // **CORREÇÃO:** Garante que o usuário gerente exista no banco de dados para o login funcionar.
 const managerUserRef = doc(db, USERS_COLLECTION_PATH, 'gerente.outlet');
