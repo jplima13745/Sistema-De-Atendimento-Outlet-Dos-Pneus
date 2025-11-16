@@ -28,3 +28,12 @@ body, html {
     height: 100%;
     object-fit: contain; /* Garante que o anúncio caiba na tela */
 }
+
+/* NOVO: Esconde a barra de rolagem da lista de serviços */
+#service-list {
+    -ms-overflow-style: none;  /* IE e Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+#service-list::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
