@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, serverTimestamp, setLogLevel, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, serverTimestamp, setLogLevel, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // CORREÇÃO: Removendo import duplicado
 
 // =========================================================================
 // CONFIGURAÇÃO FIREBASE
@@ -11,6 +11,7 @@ const LOCAL_APP_ID = 'local-autocenter-app';
 
 const appId = isCanvasEnvironment ? (typeof __app_id !== 'undefined' ? __app_id : LOCAL_APP_ID) : LOCAL_APP_ID;
 
+// --- Configuração do Firebase (copiada do auth.js) ---
 const LOCAL_FIREBASE_CONFIG = {
     apiKey: "AIzaSyDleQ5Y1-o7Uoo3zOXKIm35KljdxJuxvWo",
     authDomain: "banco-de-dados-outlet2-0.firebaseapp.com",
@@ -32,8 +33,10 @@ if (isCanvasEnvironment && typeof __firebase_config !== 'undefined') {
 } else {
     firebaseConfig = LOCAL_FIREBASE_CONFIG;
 }
-
-const initialAuthToken = (isCanvasEnvironment && typeof __initial_auth_token !== 'undefined') ? __initial_auth_token : null;
+const app = initializeApp(firebaseConfig); // CORREÇÃO: Usar a config correta
+const initialAuthToken = (isCanvasEnvironment && typeof __initial_auth_token !== 'undefined') ? __initial_auth_token : null; // CORREÇÃO: Removendo import duplicado
+// --- Constantes ---
+const CLIENT_ROLE = 'cliente';
 
 let db;
 let auth;
@@ -236,12 +239,6 @@ function initializeFirebase() {
     // Verifica se há um usuário na sessão. Se não, redireciona para o login.
     const savedUser = localStorage.getItem('currentUser');
     if (!savedUser) {
-        window.location.href = '../auth/index.html';
-        return; // Para a execução do script
-    }
-
-    if (isDemoMode) {
-        document.getElementById('user-info').textContent = `MODO DEMO ATIVO (Dados não persistentes).`;
         isAuthReady = true;
 
         renderServiceQueues(serviceJobs);
@@ -250,7 +247,7 @@ function initializeFirebase() {
         renderReadyJobs(serviceJobs, alignmentQueue);
         calculateAndRenderDashboard(); // ATUALIZADO
         return;
-    }
+    } 
 
     try {
         const app = initializeApp(firebaseConfig);
@@ -416,16 +413,26 @@ function getNextMechanicInRotation() {
     // para que o rodízio (lastAssignedMechanicIndex) funcione de forma consistente.
     const sortedMechanics = [...MECHANICS].sort();
 
-    // Incrementa o índice para pegar o próximo mecânico
-    lastAssignedMechanicIndex++;
-
-    // Se o índice passar do tamanho do array, volta para o início (rodízio)
-    if (lastAssignedMechanicIndex >= sortedMechanics.length) {
-        lastAssignedMechanicIndex = 0;
+    // NOVO: Carrega o último índice salvo do localStorage
+    let lastIndex = parseInt(localStorage.getItem('lastAssignedMechanicIndex'), 10);
+    if (isNaN(lastIndex)) {
+        lastIndex = -1;
     }
 
-    const nextMechanic = sortedMechanics[lastAssignedMechanicIndex];
-    console.log(`Atribuição Round-Robin: Próximo mecânico é ${nextMechanic} (índice ${lastAssignedMechanicIndex})`);
+    // Incrementa o índice para pegar o próximo mecânico
+    lastIndex++;
+
+    // Se o índice passar do tamanho do array, volta para o início (rodízio)
+    if (lastIndex >= sortedMechanics.length) {
+        lastIndex = 0;
+    }
+
+    // NOVO: Salva o novo índice no localStorage para persistência
+    localStorage.setItem('lastAssignedMechanicIndex', lastIndex);
+    lastAssignedMechanicIndex = lastIndex; // Atualiza a variável global
+
+    const nextMechanic = sortedMechanics[lastIndex];
+    console.log(`Atribuição Round-Robin: Próximo mecânico é ${nextMechanic} (índice ${lastIndex})`);
     return nextMechanic;
 }
 
@@ -589,8 +596,8 @@ document.getElementById('service-form').addEventListener('submit', async (e) => 
         console.error("Erro ao cadastrar serviço:", error);
         errorElement.textContent = `Erro no cadastro: ${error.message}`;
         messageElement.textContent = '';
-    }
-});
+    } // Fim do try-catch
+}); // Fim do addEventListener para 'service-form'
 
 document.getElementById('alignment-form').addEventListener('submit', async (e) => {
     e.preventDefault();

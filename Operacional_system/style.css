@@ -6,24 +6,24 @@ body {
     justify-content: center;
     align-items: flex-start;
     min-height: 100vh;
-    padding: 20px;
+    /* padding: 20px; */ /* REMOVIDO: Este padding pode estar causando o desalinhamento */
 }
+
+/* NOVO: Restaurando o container principal para um tamanho fixo e centralizado */
 .app-container {
     background-color: white;
-    border-radius: 1rem;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    max-width: 1400px;
-    width: 95%;
-    min-height: 700px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    border-radius: 1rem; /* Bordas arredondadas */
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* Sombra suave */
+    max-width: 1400px; /* Largura máxima */
+    width: 95%; /* Ocupa 95% da tela até o máximo */
+    min-height: 700px; /* Altura mínima para evitar que encolha */
+    overflow: hidden; /* Garante que o conteúdo não vaze das bordas arredondadas */
 }
 .tab-content {
     display: none;
-    padding: 2rem;
     flex-grow: 1;
 }
+
 .tab-content.active {
     display: block;
 }
