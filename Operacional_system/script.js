@@ -119,10 +119,10 @@ function postLoginSetup(user) {
     currentUserRole = role;
     currentUserName = username;
 
-    document.getElementById('login-container').classList.add('hidden');
     document.getElementById('main-content').classList.remove('hidden');
 
     // Salva sessão no localStorage (Req 1.3)
+    // A sessão já foi salva pelo módulo de autenticação
     localStorage.setItem('currentUser', JSON.stringify(user));
     document.getElementById('user-info').textContent = `Usuário: ${username} | Cargo: ${role.toUpperCase()}`;
 
@@ -132,6 +132,7 @@ function postLoginSetup(user) {
     const tabServicos = document.getElementById('tab-servicos');
     const tabAlinhamento = document.getElementById('tab-alinhamento');
     const tabMonitor = document.getElementById('tab-monitor');
+    const btnMarketing = document.getElementById('btn-marketing'); // RF004 - CORRIGIDO para usar o ID do botão
     const tabAdmin = document.getElementById('tab-admin');
 
     const contentServicos = document.getElementById('servicos');
@@ -144,15 +145,15 @@ function postLoginSetup(user) {
     const alignmentForm = document.getElementById('alignment-form');
     const alignmentFormTitle = document.getElementById('alignment-form-title');
 
-    // Reset de todas as views
-    [tabServicos, tabAlinhamento, tabMonitor, tabAdmin, alignmentForm, alignmentFormTitle, mechanicView].forEach(el => el.classList.add('hidden'));
+    // **CORREÇÃO:** Limpeza e centralização do reset da UI.
+    [tabServicos, tabAlinhamento, tabMonitor, tabAdmin, btnMarketing, alignmentForm, alignmentFormTitle, mechanicView].forEach(el => el.classList.add('hidden'));
     [contentServicos, contentAlinhamento, contentMonitor, contentAdmin, mechanicView].forEach(el => el.classList.remove('active'));
     mainNav.classList.remove('hidden');
 
     if (role === ALIGNER_ROLE) {
         // ATUALIZADO: Alinhador agora pode adicionar carros, como o vendedor.
         // Esconde as outras abas principais.
-        [tabServicos, tabMonitor, tabAdmin].forEach(el => el.classList.add('hidden'));
+        [tabServicos, tabMonitor, tabAdmin, btnMarketing].forEach(el => el.classList.add('hidden'));
 
         // Mostra a aba de alinhamento e o formulário de adição.
         [tabAlinhamento, alignmentForm, alignmentFormTitle].forEach(el => el.classList.remove('hidden'));
@@ -165,7 +166,7 @@ function postLoginSetup(user) {
         contentAlinhamento.classList.add('active');
 
     } else if (role === MANAGER_ROLE) {
-        [tabServicos, tabAlinhamento, tabMonitor, tabAdmin, alignmentForm].forEach(el => el.classList.remove('hidden', 'aligner-hidden'));
+        [tabServicos, tabAlinhamento, tabMonitor, tabAdmin, btnMarketing, alignmentForm, alignmentFormTitle].forEach(el => el.classList.remove('hidden', 'aligner-hidden'));
         alignmentFormTitle.textContent = "Adicionar Manualmente à Fila de Alinhamento";
 
         tabServicos.classList.add('active');
@@ -175,7 +176,7 @@ function postLoginSetup(user) {
 
     } else if (role === VENDEDOR_ROLE) {
         // Req 1.4: Visão do Vendedor
-        [tabServicos, tabAlinhamento, alignmentForm, alignmentFormTitle].forEach(el => el.classList.remove('hidden', 'aligner-hidden'));
+        [tabServicos, tabAlinhamento, btnMarketing, alignmentForm, alignmentFormTitle].forEach(el => el.classList.remove('hidden', 'aligner-hidden'));
         [tabMonitor, tabAdmin].forEach(el => el.classList.add('hidden'));
 
         tabServicos.classList.add('active');
@@ -197,10 +198,11 @@ function postLoginSetup(user) {
         document.getElementById('mechanic-list-title').textContent = mechanicTitle;
 
 
-    } else if (role === MECANICO_ROLE) {
-        // Req 1.4: Visão do Mecânico
+    } else if (role === MECANICO_ROLE) { // **CORREÇÃO:** Restaurando a visão do mecânico.
         mainNav.classList.add('hidden'); // Esconde a navegação principal
-        contentServicos.classList.remove('active'); // Garante que a aba de serviços não fique ativa
+        // Garante que nenhum conteúdo principal esteja ativo
+        [contentServicos, contentAlinhamento, contentMonitor, contentAdmin].forEach(el => el.classList.remove('active'));
+        // Mostra a visão do mecânico
         mechanicView.classList.remove('hidden');
         mechanicView.classList.add('active');
     }
@@ -220,72 +222,27 @@ function postLoginSetup(user) {
     calculateAndRenderDashboard(); // ATUALIZADO: Chamando o novo dashboard
 }
 
-async function handleLogin(e) {
-    e.preventDefault();
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
-    const errorElement = document.getElementById('login-error');
-    errorElement.textContent = '';
-
-    let user = null;
-
-    // 1. Tenta login pelo Firestore (Req 1.1)
-    if (!isDemoMode) {
-        try { // A consulta ao Firestore é a primeira tentativa.
-            const q = query(collection(db, USERS_COLLECTION_PATH), where("username", "==", username));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-                const userData = querySnapshot.docs[0].data();
-                if (userData.password === password) {
-                    user = { username: userData.username, role: userData.role }; // Usuário encontrado no DB
-                }
-            }
-        } catch (err) {
-            console.error("Erro ao buscar usuário no Firestore:", err);
-            // CORREÇÃO: Não exibe erro e nem para a execução.
-            // Apenas loga o erro e permite que a lógica de fallback continue.
-            // O fallback é essencial se a coleção ainda não existe ou há problemas de permissão.
-        }
-    }
-
-    // 2. Se não encontrou um usuário no Firestore (ou se a busca falhou), tenta o fallback local (Req 1.4)
-    if (!user) {
-        const fallbackUser = USER_CREDENTIALS[username];
-        if (fallbackUser && fallbackUser.password === password) {
-            user = { username, role: fallbackUser.role };
-        }
-    }
-
-    // 3. Se encontrou um usuário, faz o setup
-    if (user) {
-        postLoginSetup(user);
-    } else {
-        errorElement.textContent = 'Credenciais inválidas.';
-    }
-}
-
 window.handleLogout = function() {
     isLoggedIn = false;
     currentUserRole = null;
     currentUserName = null;
     localStorage.removeItem('currentUser'); // Limpa a sessão (Req 1.3)
-    document.getElementById('main-content').classList.add('hidden');
-    document.getElementById('login-form').reset();
-    document.getElementById('login-error').textContent = '';
-    document.getElementById('login-container').classList.remove('hidden');
-    window.location.reload(); // Recarrega para garantir estado limpo
+    // Redireciona para a página de login centralizada
+    window.location.href = '../auth/index.html';
 }
 
-document.getElementById('login-form').addEventListener('submit', handleLogin);
-
 function initializeFirebase() {
-    document.getElementById('login-container').classList.add('hidden');
-    document.getElementById('main-content').classList.add('hidden');
+    document.getElementById('main-content').classList.add('hidden'); // Esconde o conteúdo principal inicialmente
+    // Verifica se há um usuário na sessão. Se não, redireciona para o login.
+    const savedUser = localStorage.getItem('currentUser');
+    if (!savedUser) {
+        window.location.href = '../auth/index.html';
+        return; // Para a execução do script
+    }
 
     if (isDemoMode) {
         document.getElementById('user-info').textContent = `MODO DEMO ATIVO (Dados não persistentes).`;
         isAuthReady = true;
-        document.getElementById('login-container').classList.remove('hidden');
 
         renderServiceQueues(serviceJobs);
         renderAlignmentQueue(alignmentQueue);
@@ -295,65 +252,17 @@ function initializeFirebase() {
         return;
     }
 
-    // NOVO: Verifica se há sessão salva no localStorage (Req 1.3)
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-        isAuthReady = true; // Assume que a autenticação ocorrerá sem problemas
-        // O onAuthStateChanged vai lidar com o resto
-    }
-
     try {
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
         analytics = getAnalytics(app);
-        setLogLevel('Debug');
 
-        onAuthStateChanged(auth, async (user) => {
+        // Como a autenticação já foi feita, apenas lemos os dados e iniciamos o sistema
+        const user = JSON.parse(savedUser); // Lê o usuário da sessão
+        isAuthReady = true;
+        postLoginSetup(user); // Configura a UI com os dados do usuário
 
-            if (isCanvasEnvironment) {
-                if (initialAuthToken) {
-                    try {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } catch (e) {
-                        console.warn("Falha no Custom Token, usando Anônimo.", e);
-                        await signInAnonymously(auth);
-                    }
-                } else if (!user) {
-                    await signInAnonymously(auth);
-                }
-
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                if (savedUser) {
-                    postLoginSetup(JSON.parse(savedUser));
-                } else {
-                    // Comportamento padrão para ambiente de plataforma sem login salvo
-                    postLoginSetup({ username: "DB_User (Gerente)", role: MANAGER_ROLE });
-                }
-
-                isAuthReady = true;
-
-            } else {
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-
-                if (!user) {
-                    try {
-                        await signInAnonymously(auth);
-                        userId = auth.currentUser.uid;
-                    } catch (e) {
-                        console.error("Falha no login anônimo (Necessário para Firestore):", e);
-                    }
-                }
-
-                if (savedUser) {
-                    postLoginSetup(JSON.parse(savedUser));
-                } else {
-                    document.getElementById('login-container').classList.remove('hidden');
-                    document.getElementById('main-content').classList.add('hidden');
-                }
-                isAuthReady = true;
-            }
-        });
     } catch (e) {
         console.error("Erro ao inicializar Firebase:", e);
         document.getElementById('main-content').classList.remove('hidden');
@@ -3023,8 +2932,6 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
         window.confirmDeleteUser = confirmDeleteUser; // NOVO
         document.getElementById('create-user-form').addEventListener('submit', handleCreateUser);
         initializeFirebase();
-
-
         // ------------------------------------
         // 6. Controle de Navegação por Abas
         // ------------------------------------

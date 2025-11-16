@@ -160,19 +160,21 @@ async function handleMediaListClick(e) {
     }
 
     // --- Lógica para o switch de status ---
-    if (target.classList.contains('toggle-checkbox')) {
-        const newStatus = target.checked ? 'ativo' : 'inativo';
+    const toggleSwitch = target.closest('.toggle-switch-container');
+    if (toggleSwitch) {
+        const checkbox = toggleSwitch.querySelector('.toggle-checkbox');
+        const newStatus = checkbox.checked ? 'ativo' : 'inativo';
         try {
             await fetch(`${API_BASE_URL}/media/${mediaId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus })
             });
-            showUserMessage(`Status atualizado para ${newStatus}.`);
+            showUserMessage(`Status atualizado para '${newStatus}'.`);
         } catch (error) {
             console.error("Erro ao atualizar status:", error);
             showUserMessage("Erro ao atualizar o status.", true);
-            target.checked = !target.checked; // Reverte a mudança visual em caso de erro
+            checkbox.checked = !checkbox.checked; // Reverte a mudança visual em caso de erro
         }
     }
 

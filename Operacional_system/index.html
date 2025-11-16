@@ -15,37 +15,11 @@
 <body>
 
     <div class="app-container">
-        
-        <!-- ======================================================= -->
-        <!-- TELA DE LOGIN -->
-        <!-- ======================================================= -->
-        <div id="login-container" class="hidden absolute inset-0 bg-gray-50 flex items-center justify-center p-8 z-50">
-            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-8 border border-gray-200">
-                <h2 class="text-3xl font-bold text-blue-900 mb-6 text-center">Acesso <span class="text-yellow-400">Atendimentos Outlet</span></h2>
-                <p class="text-sm text-gray-500 mb-6 text-center">Use suas credenciais para acessar o sistema.</p>
-                
-                <form id="login-form">
-                    <div class="mb-4">
-                        <label for="username" class="block text-sm font-medium text-gray-700">Usuário</label>
-                        <input type="text" id="username" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div class="mb-6">
-                        <label for="password" class="block text-sm font-medium text-gray-700">Senha</label>
-                        <input type="password" id="password" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <p id="login-error" class="text-red-500 text-sm mb-4 text-center"></p>
-                    <button type="submit" class="w-full py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
-                        Entrar
-                    </button>
-                </form>
-
-            </div>
-        </div>
 
         <!-- ======================================================= -->
         <!-- CONTEÚDO PRINCIPAL (Exibido apenas após Login) -->
         <!-- ======================================================= -->
-        <div id="main-content" class="hidden flex-grow flex flex-col">
+        <div id="main-content" class="flex-grow flex flex-col">
             <!-- Cabeçalho e Navegação -->
             <header class="p-6 bg-blue-900 text-white rounded-t-xl flex justify-between items-center">
                 <h1 class="text-3xl font-bold">Atendimentos <span class="text-yellow-400">Outlet</span></h1>
@@ -71,10 +45,10 @@
                 <button id="tab-admin" class="tab-button p-4 text-sm font-medium text-gray-600 hover:bg-gray-200 hidden" data-tab="admin">
                     Administrativo (Gerente)
                 </button>
-                <!-- NOVO: Aba Marketing -->
-                <button id="tab-marketing" class="tab-button p-4 text-sm font-medium text-gray-600 hover:bg-gray-200 hidden" data-tab="marketing_interface">
-                    Marketing (Gerente)
-                </button>
+                <!-- NOVO: Botão de redirecionamento para o Marketing -->
+                <a id="btn-marketing" href="../marketing_interface/index.html" target="_blank" class="p-4 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 hidden ml-auto">
+                    Acessar Marketing
+                </a>
             </nav>
 
             <!-- Conteúdo das Abas -->
@@ -381,6 +355,7 @@
                                     <select id="new-user-role" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500">
                                         <option value="vendedor">Vendedor</option>
                                         <option value="mecanico">Mecânico (Geral)</option>
+                                        <option value="analista_marketing">Analista de Marketing</option>
                                         <option value="aligner">Alinhador</option>
                                     </select>
                                 </div>
@@ -406,11 +381,6 @@
                     <!-- O conteúdo da fila do mecânico será renderizado aqui -->
                 </div>
 
-                <!-- NOVO: Conteúdo da Aba Marketing -->
-                <div id="marketing_interface" class="tab-content" style="padding: 0; height: 100%;">
-                    <!-- O iframe carrega o módulo de marketing de forma isolada -->
-                    <iframe src="../marketing_interface/index.html" class="w-full h-full border-0"></iframe>
-                </div>
             </main>
         </div>
     </div>
@@ -556,6 +526,7 @@
                     <select id="edit-user-role" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500">
                         <option value="vendedor">Vendedor</option>
                         <option value="mecanico">Mecânico (Geral)</option>
+                        <option value="analista_marketing">Analista de Marketing</option>
                         <option value="aligner">Alinhador</option>
                     </select>
                 </div>
