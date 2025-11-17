@@ -49,3 +49,12 @@ body {
     color: #1e3a8a;
     background-color: #eff6ff;
 }
+
+/* NOVO: Limita o texto da descrição para evitar overflow horizontal */
+/* ATUALIZADO: Ajustado para ser mais flexível */
+.description-truncate {
+    white-space: nowrap; /* Impede a quebra de linha do texto */
+    overflow: hidden; /* Esconde o texto que ultrapassa o limite do elemento */
+    text-overflow: ellipsis; /* Adiciona "..." ao final do texto cortado */
+    max-width: 200px; /* Define uma largura máxima padrão. Pode ser ajustado conforme necessário. */
+}

@@ -145,42 +145,53 @@ function setupRealtimeListeners() {
  * Orquestra a renderização da tela, unindo e ordenando os dados.
  */
 function renderDisplay() {
-    // 1. Unifica e processa os dados para exibição
-    const displayItems = [];
+    // 1. Unifica e processa os dados para exibição, tratando duplicidades
+    const combinedItems = new Map();
     const readyItems = [];
 
     // Processa carros da fila de alinhamento
     alignmentQueue.forEach(car => {
         if (car.status === STATUS_READY) {
             readyItems.push({ plate: car.licensePlate, client: car.clientName || 'N/A', service: 'Alinhamento' });
-        } else {
-            let priority = 99;
-            let statusText = "Na fila";
-            if (car.status === STATUS_ATTENDING) { priority = 1; statusText = "Alinhando"; }
-            else if (car.status === STATUS_WAITING) { priority = 2; statusText = "Aguardando Alinhamento"; }
-            else if (car.status === STATUS_WAITING_GS) { priority = 3; statusText = "Aguardando Serviço Geral"; }
-            
-            displayItems.push({ plate: car.licensePlate, client: car.clientName || 'N/A', service: 'Alinhamento', status: statusText, priority, statusClass: car.status === STATUS_ATTENDING ? 'in-progress' : 'waiting' });
+            return;
         }
+
+        let priority = 99;
+        let statusText = "Na fila";
+        if (car.status === STATUS_ATTENDING) { priority = 1; statusText = "Alinhando"; }
+        else if (car.status === STATUS_WAITING) { priority = 2; statusText = "Aguardando Alinhamento"; }
+        else if (car.status === STATUS_WAITING_GS) { priority = 3; statusText = "Aguardando Serviço Geral"; }
+
+        combinedItems.set(car.licensePlate, {
+            plate: car.licensePlate,
+            client: car.clientName || 'N/A',
+            service: 'Alinhamento',
+            status: statusText,
+            priority,
+            statusClass: car.status === STATUS_ATTENDING ? 'in-progress' : 'waiting'
+        });
     });
 
     // Processa carros da fila de serviços gerais
     serviceJobs.forEach(job => {
         if (job.status === STATUS_READY) {
             readyItems.push({ plate: job.licensePlate, client: job.clientName || 'N/A', service: 'Serviço Geral' });
-        } else if (job.status === STATUS_PENDING) {
-            let statusText = "Em serviço";
-            let priority = 5;
-            if (job.statusGS === 'Pendente' && job.statusTS === 'Pendente') {
-                statusText = "Serviço Geral e Pneus";
-            } else if (job.statusGS === 'Pendente') {
-                statusText = "Serviço Geral";
-            } else if (job.statusTS === 'Pendente') {
-                statusText = "Serviço de Pneus";
-            }
-            displayItems.push({ plate: job.licensePlate, client: job.clientName || 'N/A', service: statusText, status: 'Em Andamento', priority, statusClass: 'in-progress' });
+            return;
+        }
+
+        // Se o carro já está na lista (veio do alinhamento), não o substitua,
+        // pois o status de alinhamento tem prioridade de exibição.
+        if (job.status === STATUS_PENDING && !combinedItems.has(job.licensePlate)) {
+            const serviceText = (job.statusGS === 'Pendente' && job.statusTS === 'Pendente')
+                ? "Serviço Geral e Pneus"
+                : (job.statusGS === 'Pendente' ? "Serviço Geral" : "Serviço de Pneus");
+            
+            combinedItems.set(job.licensePlate, { plate: job.licensePlate, client: job.clientName || 'N/A', service: serviceText, status: 'Em Andamento', priority: 5, statusClass: 'in-progress' });
         }
     });
+
+    // Converte o Map para um array
+    const displayItems = Array.from(combinedItems.values());
 
     // 2. Ordena a fila principal (RF002)
     displayItems.sort((a, b) => a.priority - b.priority);
@@ -188,7 +199,6 @@ function renderDisplay() {
     // 3. Renderiza as listas
     renderServiceList(displayItems);
     renderReadyList(readyItems);
-    // handleAutoScroll(); // A rolagem automática foi removida do escopo do novo layout
 }
 
 /**
