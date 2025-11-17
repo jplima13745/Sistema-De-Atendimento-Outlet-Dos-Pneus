@@ -2088,20 +2088,19 @@ function renderAlignmentMirror(cars) {
                                         isWaitingGS ? 'bg-red-100 text-red-800' :
                                         'bg-blue-100 text-blue-800';
 
-                    const gsDescriptionShort = (car.gsDescription && car.gsDescription !== "Avaliação")
-                        ? car.gsDescription.substring(0, 20) + '...'
-                        : 'Avaliação...';
-
                     const statusText = isAttending ? 'Em Atendimento' :
-                                       isWaitingGS ? `Aguardando GS (${gsDescriptionShort})` :
+                                       isWaitingGS ? `Aguardando GS` :
                                        'Disponível';
 
                     return `
-                        <li class="p-3 bg-white rounded-md border border-gray-200 shadow-sm flex justify-between items-center text-sm">
-                            <span class="font-semibold">${index + 1}. ${car.carModel} (${car.licensePlate})</span>
-                            <span class="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
-                                ${statusText}
-                            </span>
+                        <li class="p-3 bg-white rounded-md border border-gray-200 shadow-sm text-sm">
+                            <div class="flex justify-between items-start">
+                                <span class="font-semibold">${index + 1}. ${car.carModel} (${car.licensePlate})</span>
+                                <span class="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass} flex-shrink-0 ml-2">
+                                    ${statusText}
+                                </span>
+                            </div>
+                            ${isWaitingGS ? `<div class="text-xs text-gray-500 pt-1 description-truncate" title="${car.gsDescription}">${car.gsDescription}</div>` : ''}
                         </li>
                     `;
                 }).join('')}
@@ -2156,7 +2155,7 @@ function renderAlignmentQueue(cars) {
         const isAttending = car.status === STATUS_ATTENDING;
         const isWaitingGS = car.status === STATUS_WAITING_GS;
 
-        // Ícones para as novas ações
+        // Ícones para as novas ações (sem alterações aqui, apenas para contexto)
         const discardIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
         const returnIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
         const finalizeIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
@@ -2165,13 +2164,7 @@ function renderAlignmentQueue(cars) {
                             isWaitingGS ? 'bg-red-100 text-red-800' :
                             'bg-blue-100 text-blue-800';
 
-        const gsDescriptionShort = (car.gsDescription && car.gsDescription !== "Avaliação")
-            ? car.gsDescription.substring(0, 25) + '...'
-            : 'Avaliação...';
-
-        const statusText = isAttending ? 'Em Atendimento' :
-                           isWaitingGS ? `Aguardando GS: ${gsDescriptionShort}` :
-                           'Disponível para Alinhar';
+        const statusText = isAttending ? 'Em Atendimento' : isWaitingGS ? `Aguardando GS` : 'Disponível para Alinhar';
 
         const rowClass = isWaitingGS ? 'bg-red-50/50' : (isNextWaiting ? 'bg-yellow-50/50' : '');
 
@@ -2261,9 +2254,12 @@ function renderAlignmentQueue(cars) {
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${car.customerName} (Vendedor: ${car.vendedorName || 'N/A'})</td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor}">
-                        ${statusText}
-                    </span>
+                    <div class="flex flex-col">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor} self-start">
+                            ${statusText}
+                        </span>
+                        ${isWaitingGS ? `<div class="text-xs text-gray-500 pt-1 description-truncate" title="${car.gsDescription}">${car.gsDescription}</div>` : ''}
+                    </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowTRap text-center text-sm font-medium">
                     ${moverButtons}
@@ -2328,7 +2324,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             readyJobs.forEach(job => {
                 const isService = job.source === 'service';
                 const serviceInfo = isService ? job.assignedMechanic : ALIGNMENT_MECHANIC;
-                const serviceDetail = isService ? job.serviceDescription.substring(0, 50) + '...' : 'Revisão de Geometria/Balanceamento';
+                const serviceDetail = isService ? job.serviceDescription : 'Revisão de Geometria/Balanceamento';
                 const readyTimestamp = job.readyAt || job.timestamp;
                 const readyTime = new Date(getTimestampSeconds(readyTimestamp) * 1000).toLocaleTimeString('pt-BR');
 
@@ -2341,7 +2337,9 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                              <span class="text-xs text-gray-500 block">${job.licensePlate}</span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${job.customerName} (${job.vendedorName || 'N/A'})</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${serviceInfo} (${serviceDetail})</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <div class="description-truncate" title="${serviceDetail}">${serviceInfo} (${serviceDetail})</div>
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-200 text-green-800">
                                 PRONTO (${readyTime})
