@@ -86,6 +86,15 @@ let currentAlignmentJobForRework = null; // NOVO: Para o modal de retorno
 let currentUserToEditId = null; // NOVO: Para edição de usuário
 let lastAssignedMechanicIndex = -1; // NOVO: Para o rodízio de mecânicos (Req 3.1)
 
+// NOVO: Estado para o filtro de período do histórico
+let historyPeriod = 'daily'; // 'daily', 'weekly', 'monthly', 'yearly'
+let historyDate = null; // NOVO: Para armazenar a data selecionada no filtro diário
+let historyMonth = new Date().getMonth(); // NOVO: Para o filtro mensal
+let historyYear = new Date().getFullYear(); // NOVO: Para os filtros mensal e anual
+
+// NOVO: Variável global para a lista de histórico detalhado, para ser usada pelo exportador de PDF.
+let detailedHistoryList = [];
+
 let MECHANICS = ['José', 'Wendell']; // MANTIDO: Como fallback inicial, será substituído pelo Firestore
 const TIRE_SHOP_MECHANIC = 'Borracheiro';
 const ALIGNMENT_MECHANIC = 'Alinhador'; // NOVO: Constante para o Alinhador
@@ -239,14 +248,9 @@ function initializeFirebase() {
     // Verifica se há um usuário na sessão. Se não, redireciona para o login.
     const savedUser = localStorage.getItem('currentUser');
     if (!savedUser) {
-        isAuthReady = true;
 
-        renderServiceQueues(serviceJobs);
-        renderAlignmentQueue(alignmentQueue);
-        renderAlignmentMirror(alignmentQueue);
-        renderReadyJobs(serviceJobs, alignmentQueue);
-        calculateAndRenderDashboard(); // ATUALIZADO
-        return;
+        window.location.href = '../auth/index.html'; // Redireciona para login se não houver sessão
+        return; // Para a execução para evitar erros
     } 
 
     try {
@@ -797,13 +801,17 @@ function showFinalizeModal(id, type, title, message, confirmAction) {
     confirmButton.classList.remove('bg-green-600', 'hover:bg-green-700');
     confirmButton.classList.add('bg-red-600', 'hover:bg-red-700');
 
+    // CORREÇÃO CRÍTICA: A lógica de atribuição da ação estava incompleta.
     if (confirmAction === 'finalize') confirmButton.textContent = 'Sim, Finalizar e Receber';
     else if (confirmAction === 'markAsLost') confirmButton.textContent = 'Sim, Marcar como Perdido';
     else if (confirmAction === 'deleteUser') confirmButton.textContent = 'Sim, Excluir Usuário';
-    else if (confirmAction === 'discardAlignment') confirmButton.textContent = 'Sim, Descartar'; // NOVO
-    else if (confirmAction === 'finalizeAlignmentFromRework') confirmButton.textContent = 'Sim, Finalizar'; // NOVO
+    else if (confirmAction === 'discardAlignment') confirmButton.textContent = 'Sim, Descartar';
+    else if (confirmAction === 'finalizeAlignmentFromRework') {
+        confirmButton.textContent = 'Sim, Finalizar';
+        // A ação de clique é tratada pelo listener global do #confirm-button,
+        // que agora reconhecerá 'finalizeAlignmentFromRework'.
+    }
     else confirmButton.textContent = 'Sim, Confirmar';
-
 
     modal.classList.remove('hidden');
 }
@@ -829,13 +837,23 @@ window.showAlignmentReadyConfirmation = function(docId) {
      showConfirmationModal(docId, 'alignment', 'Confirmar Alinhamento Concluído', 'Tem certeza de que o **Alinhamento** está PRONTO e deve ser enviado para a Gerência?', 'alignment');
 }
 
-window.showFinalizeConfirmation = function(docId, collectionType) {
-    if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem finalizar pagamentos.");
+window.showFinalizeConfirmation = function(docId, collectionType) { // CORREÇÃO: Permite que Alinhadores também finalizem
+    if (currentUserRole !== MANAGER_ROLE && currentUserRole !== ALIGNER_ROLE) return alertUser("Acesso negado. Apenas Gerentes ou Alinhadores podem finalizar pagamentos.");
 
     const title = collectionType === 'service' ? 'Finalizar Pagamento (Mecânica)' : 'Finalizar Pagamento (Alinhamento)';
     const message = `Confirma a finalização e recebimento do pagamento para o serviço de **${collectionType === 'service' ? 'Mecânica' : 'Alinhamento'}**? Esta ação marcará o carro como 'Finalizado'.`;
 
      showFinalizeModal(docId, collectionType, title, message, 'finalize');
+}
+
+// NOVO: Modal para confirmar o envio do alinhamento para o gerente (pronto para pagamento)
+window.showSendToManagerConfirmation = function(docId) {
+    if (currentUserRole !== MANAGER_ROLE && currentUserRole !== ALIGNER_ROLE) return alertUser("Acesso negado.");
+
+    const title = 'Enviar para Gerência';
+    const message = `Tem certeza de que o serviço de alinhamento está concluído e deve ser enviado para a fila de pagamento do gerente?`;
+
+    showConfirmationModal(docId, 'alignment', title, message, 'alignment'); // Reutiliza a ação 'alignment' que chama `confirmAlignmentReady`
 }
 
 window.showMarkAsLostConfirmation = function(docId) {
@@ -924,16 +942,22 @@ window.confirmDiscardAlignment = function() {
 // NOVO: Ação de finalizar direto do modal de retrabalho
 window.confirmFinalizeAlignmentFromRework = function() {
     if (currentJobToConfirm.id && currentJobToConfirm.confirmAction === 'finalizeAlignmentFromRework') {
-        // CORREÇÃO: Marca o alinhamento como 'Pronto' primeiro, para que ele apareça na fila de pagamento.
-        updateAlignmentStatus(currentJobToConfirm.id, 'Done');
+        const alignmentJobId = currentJobToConfirm.id;
+        const alignmentJob = alignmentQueue.find(c => c.id === alignmentJobId);
 
-        // NOVO: Também marca o serviço geral associado como 'Pronto para Pagamento'.
-        const alignmentJob = alignmentQueue.find(c => c.id === currentJobToConfirm.id);
-        if (alignmentJob && alignmentJob.serviceJobId) {
-            const serviceDocRef = doc(db, SERVICE_COLLECTION_PATH, alignmentJob.serviceJobId);
-            updateDoc(serviceDocRef, {
+        // 1. Marca o próprio serviço de alinhamento como 'Pronto para Pagamento'
+        updateAlignmentStatus(alignmentJobId, 'Done'); // 'Done' internamente vira STATUS_READY
+
+        // 2. CORREÇÃO: Se houver um serviço geral associado, ele TAMBÉM deve ser
+        //    marcado como 'Pronto para Pagamento' para que apareça na fila do gerente.
+        if (alignmentJob?.serviceJobId) {
+            const serviceJobRef = doc(db, SERVICE_COLLECTION_PATH, alignmentJob.serviceJobId);
+            updateDoc(serviceJobRef, {
                 status: STATUS_READY
-            }).catch(e => console.error("Erro ao finalizar serviço geral associado:", e));
+            }).catch(e => console.error("Erro ao finalizar o serviço geral associado a partir do retrabalho:", e));
+        } else {
+            // Se não houver serviço geral, o alinhamento manual já foi tratado pelo updateAlignmentStatus.
+            console.log("Finalizando alinhamento manual a partir do modal de retrabalho.");
         }
 
         hideConfirmationModal();
@@ -991,9 +1015,6 @@ function createReworkModal() {
                             </div>
                         </div>
                         <div class="items-center px-4 py-3 bg-gray-50 rounded-b-md -mx-5 -mb-5 mt-6 flex justify-end space-x-3">
-                            <button id="rework-finalize-button" type="button" class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                                Finalizar e Enviar ao Gerente
-                            </button>
                             <button id="rework-confirm-button" type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                 Retornar ao Mecânico
                             </button>
@@ -1015,16 +1036,6 @@ function createReworkModal() {
 
     reworkForm.dataset.listenerAttached = 'true';
     document.getElementById('rework-form').addEventListener('submit', handleReturnToMechanic);
-    document.getElementById('rework-finalize-button').addEventListener('click', () => {
-        if (!currentAlignmentJobForRework) return;
-        hideReturnToMechanicModal();
-        const car = alignmentQueue.find(c => c.id === currentAlignmentJobForRework);
-        if (!car) return;
-
-        const title = 'Finalizar Serviço de Alinhamento';
-        const message = `Deseja finalizar o serviço do carro <strong>${car.licensePlate}</strong> sem retrabalho e enviá-lo para pagamento?`;
-        showFinalizeModal(currentAlignmentJobForRework, 'alignment', title, message, 'finalizeAlignmentFromRework');
-    });
 }
 
 window.showReturnToMechanicModal = function(docId) {
@@ -1359,7 +1370,6 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
                 dataToUpdate.status = STATUS_READY;
             }
 
-                await updateDoc(alignDocRef, alignmentDataToUpdate);
 
             alertUser("Serviço atualizado com sucesso!");
         } catch (error) {
@@ -1462,23 +1472,17 @@ async function markServiceReady(docId, serviceType) {
         const isGsReady = job.statusGS === STATUS_GS_FINISHED;
         const isTsReady = job.statusTS === STATUS_TS_FINISHED || job.statusTS === null;
 
-        // NOVO: Lógica para retrabalho que precisa voltar ao alinhamento
         // CORREÇÃO: Lógica para retrabalho que precisa voltar ao alinhamento
         if (job.statusGS === STATUS_GS_FINISHED && job.requiresAlignmentAfterRework) {
-            // CORREÇÃO: Busca o job de alinhamento pelo ID do serviço, independentemente do status atual,
-            // para garantir que ele seja encontrado mesmo se estiver como 'Perdido'.
-            // Busca o job de alinhamento associado, mesmo que esteja 'Perdido'
+            // Busca o job de alinhamento associado, que foi marcado como 'Perdido' anteriormente.
             const alignQuery = query(
                 collection(db, ALIGNMENT_COLLECTION_PATH), where('serviceJobId', '==', docId)
             );
             const alignSnapshot = await getDocs(alignQuery);
             if (!alignSnapshot.empty) {
                 const alignDocRef = alignSnapshot.docs[0].ref;
-                // Reativa o job de alinhamento, colocando-o de volta na fila de espera.
-                await updateDoc(alignDocRef, { status: STATUS_WAITING, timestamp: serverTimestamp(), readyAt: null, finalizedAt: null });
-                // Reseta o status do serviço geral para indicar que aguarda o novo alinhamento.
-                await updateDoc(serviceDocRef, { status: STATUS_GS_FINISHED, requiresAlignmentAfterRework: false });
-                // Reativa o job de alinhamento, colocando-o de volta na fila de espera, e reseta o serviço geral.
+                // Reativa o job de alinhamento, colocando-o de volta na fila de espera, e reseta o serviço geral
+                // para indicar que agora aguarda o alinhamento ser concluído.
                 await Promise.all([
                     updateDoc(alignDocRef, { status: STATUS_WAITING, timestamp: serverTimestamp(), readyAt: null, finalizedAt: null }),
                     updateDoc(serviceDocRef, { status: STATUS_GS_FINISHED, requiresAlignmentAfterRework: false })
@@ -1516,7 +1520,7 @@ async function markServiceReady(docId, serviceType) {
 
 async function finalizeJob(docId, collectionType) {
     if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem finalizar pagamentos.");
-
+    
      const collectionPath = collectionType === 'service' ? SERVICE_COLLECTION_PATH : ALIGNMENT_COLLECTION_PATH;
      const isService = collectionType === 'service';
      const finalizedTimestamp = isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp();
@@ -1553,12 +1557,15 @@ async function finalizeJob(docId, collectionType) {
         const dataToUpdate = { status: STATUS_FINALIZED, finalizedAt: finalizedTimestamp };
         await updateDoc(docRef, dataToUpdate);
 
+        // CORREÇÃO: Garante que ao finalizar um alinhamento, o serviço geral associado também seja finalizado.
+        // Isso é crucial para o fluxo de retrabalho, onde o serviço geral fica 'Aguardando Alinhamento'.
         if (!isService) {
             const carDoc = await getDoc(docRef);
             if (carDoc.exists() && carDoc.data().serviceJobId) {
                 const serviceJobId = carDoc.data().serviceJobId;
                 const serviceDocRef = doc(db, SERVICE_COLLECTION_PATH, serviceJobId);
                 const serviceDoc = await getDoc(serviceDocRef);
+                // Apenas finaliza o serviço geral se ele ainda não estiver finalizado.
                 if (serviceDoc.exists() && serviceDoc.data().status !== STATUS_FINALIZED) {
                     await updateDoc(serviceDocRef, dataToUpdate);
                 }
@@ -1846,17 +1853,14 @@ function renderServiceQueues(jobs) {
             ` : '';
 
             // CORREÇÃO: Lógica unificada para "Ver mais/Ver menos"
+            // AGORA: Usa um modal para exibir o texto completo.
             let descriptionHTML = '';
             const descriptionText = job.serviceDescription || 'N/A';
             if (descriptionText.length > 15) {
                 const shortText = `${descriptionText.substring(0, 15)}...`;
                 descriptionHTML = `
-                    <div class="overflow-hidden">
-                        <p id="desc-short-${job.id}" class="text-sm ${statusColor} break-words"
-                           data-full-text="${descriptionText}"
-                           data-short-text="${shortText}">${shortText}</p>
-                        <button id="desc-btn-${job.id}" data-job-id="${job.id}" data-expanded="false" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
-                    </div>
+                    <p class="text-sm ${statusColor} break-words">${shortText}</p>
+                    <button onclick="showFullDescriptionModal(\`${escape(descriptionText)}\`)" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
                 `;
             } else {
                 descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText}</p>`;
@@ -1913,17 +1917,13 @@ function renderServiceQueues(jobs) {
                     descriptionHTML += '<span class="text-xs text-blue-600 block mt-1">(Clique p/ definir)</span>';
                 }
             } else {
-                // CORREÇÃO: Lógica unificada para "Ver mais/Ver menos"
+                // AGORA: Usa um modal para exibir o texto completo.
                 const descriptionText = job.serviceDescription || 'N/A';
                 if (descriptionText.length > 15) {
                     const shortText = `${descriptionText.substring(0, 15)}...`;
                     descriptionHTML = `
-                        <div class="overflow-hidden">
-                            <p id="desc-short-${job.id}" class="text-sm ${statusColor} break-words"
-                               data-full-text="${descriptionText}"
-                               data-short-text="${shortText}">${shortText}</p>
-                            <button id="desc-btn-${job.id}" data-job-id="${job.id}" data-expanded="false" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
-                        </div>
+                        <p class="text-sm ${statusColor} break-words">${shortText}</p>
+                        <button onclick="showFullDescriptionModal(\`${escape(descriptionText)}\`)" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
                     `;
                 } else {
                     descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText}</p>`;
@@ -1996,18 +1996,13 @@ function renderServiceQueues(jobs) {
                 if (!isDefined) {
                     descriptionHTML = '<p class="font-bold text-red-600">(Aguardando Definição de Serviço pela Gerência)</p>';
                 } else {
-                    // CORREÇÃO: Lógica unificada para "Ver mais/Ver menos"
+                    // AGORA: Usa um modal para exibir o texto completo.
                     const descriptionText = job.serviceDescription || 'N/A';
                     if (descriptionText.length > 15) {
                         const shortText = `${descriptionText.substring(0, 15)}...`;
                         descriptionHTML = `
-                            <div class="overflow-hidden">
-                                <p id="desc-short-${job.id}" class="text-sm ${statusColor} break-words"
-                                   data-full-text="${descriptionText}"
-                                   data-short-text="${shortText}">${shortText}</p>
-                                <button id="desc-btn-${job.id}" data-job-id="${job.id}" data-expanded="false"
-                                        class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
-                            </div>
+                            <p class="text-sm ${statusColor} break-words">${shortText}</p>
+                            <button onclick="showFullDescriptionModal(\`${escape(descriptionText)}\`)" class="text-xs text-blue-500 hover:underline mt-1">Ver mais</button>
                         `;
                     } else {
                         descriptionHTML = `<p class="text-sm ${statusColor} break-words">${descriptionText}</p>`;
@@ -2046,17 +2041,6 @@ function renderServiceQueues(jobs) {
         }
         mechanicViewContainer.innerHTML = mechanicViewHTML;
     }
-
-    // CORREÇÃO: Adiciona os event listeners para TODOS os botões "Ver mais" após a renderização.
-    // Isso garante que os botões funcionem em todas as visões.
-    document.querySelectorAll('button[data-job-id]').forEach(button => {
-        const jobId = button.getAttribute('data-job-id');
-        // Remove listener antigo para evitar duplicação
-        const newButton = button.cloneNode(true);
-        button.parentNode.replaceChild(newButton, button);
-        // Adiciona o novo listener
-        newButton.addEventListener('click', () => toggleDescription(jobId));
-    });
 }
 
 function getSortedAlignmentQueue() {
@@ -2172,9 +2156,10 @@ function renderAlignmentQueue(cars) {
         const isAttending = car.status === STATUS_ATTENDING;
         const isWaitingGS = car.status === STATUS_WAITING_GS;
 
-        // NOVO: Ícones para as novas ações (CORRIGIDO)
+        // Ícones para as novas ações
         const discardIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
         const returnIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
+        const finalizeIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
 
         const statusColor = isAttending ? 'bg-yellow-100 text-yellow-800' :
                             isWaitingGS ? 'bg-red-100 text-red-800' :
@@ -2216,39 +2201,54 @@ function renderAlignmentQueue(cars) {
 
         let actions;
 
-        const reworkActions = `
-            <button onclick="showReturnToMechanicModal('${car.id}')" title="Retornar ao Mecânico" class="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition">
-                ${returnIcon}
-            </button>
-            <button onclick="showDiscardAlignmentConfirmation('${car.id}')" title="Descartar / Perdido" class="p-1 text-red-600 hover:bg-red-100 rounded-full transition">
-                ${discardIcon}
-            </button>
-        `;
+        // Ações disponíveis para Alinhador ou Gerente
+        const canTakeAction = currentUserRole === ALIGNER_ROLE || currentUserRole === MANAGER_ROLE;
 
         if (isAttending) {
-            actions = `
-                <div class="flex items-center space-x-2">
-                    ${reworkActions}
-                    <button onclick="showAlignmentReadyConfirmation('${car.id}')"
-                        class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-md hover:bg-green-600 transition"
-                        ${!isLoggedIn ? 'disabled' : ''}>
-                        Pronto
-                    </button>
-                </div>
-            `;
+             actions = `
+                 <div class="flex items-center space-x-2 justify-end">
+                     <button onclick="showReturnToMechanicModal('${car.id}')" title="Retornar ao Mecânico" class="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition" ${!canTakeAction ? 'disabled' : ''}>
+                         ${returnIcon}
+                     </button>
+                     <button onclick="showDiscardAlignmentConfirmation('${car.id}')" title="Descartar / Perdido" class="p-1 text-red-600 hover:bg-red-100 rounded-full transition" ${!canTakeAction ? 'disabled' : ''}>
+                         ${discardIcon}
+                     </button>
+                     <button onclick="showAlignmentReadyConfirmation('${car.id}')"
+                         class="text-xs font-medium bg-green-500 text-white py-1 px-3 rounded-md hover:bg-green-600 transition"
+                         ${!canTakeAction ? 'disabled' : ''}>
+                         Pronto
+                     </button>
+                 </div>
+             `;
         } else if (isNextWaiting) {
             actions = `
-                <div class="flex items-center space-x-2">
-                     ${reworkActions}
+                <div class="flex items-center space-x-2 justify-end">
+                    <button onclick="showReturnToMechanicModal('${car.id}')" title="Retornar ao Mecânico" class="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition" ${!canTakeAction ? 'disabled' : ''} ${!car.serviceJobId ? 'disabled title="Ação não permitida para adição manual"' : ''}>
+                        ${returnIcon}
+                    </button>
+                    <button onclick="showDiscardAlignmentConfirmation('${car.id}')" title="Descartar / Perdido" class="p-1 text-red-600 hover:bg-red-100 rounded-full transition" ${!canTakeAction ? 'disabled' : ''}>
+                        ${discardIcon}
+                    </button>
                     <button onclick="updateAlignmentStatus('${car.id}', '${STATUS_ATTENDING}')"
-                        class="text-xs font-medium bg-yellow-500 text-gray-900 py-1 px-3 rounded-md hover:bg-yellow-600 transition"
-                        ${!isLoggedIn ? 'disabled' : ''}>
+                        class="text-xs font-medium bg-yellow-500 text-white py-1 px-3 rounded-md hover:bg-yellow-600 transition"
+                        ${!canTakeAction ? 'disabled' : ''}>
                         Iniciar
                     </button>
                 </div>
             `;
         } else {
-            actions = `<span class="text-xs text-gray-400">Na fila...</span>`;
+            // Para os outros carros na fila, também permite descartar ou retornar, se tiverem permissão.
+            actions = `
+                <div class="flex items-center space-x-2 justify-end">
+                    <button onclick="showReturnToMechanicModal('${car.id}')" title="Retornar ao Mecânico" class="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition" ${!canTakeAction || !car.serviceJobId ? 'disabled' : ''} ${!car.serviceJobId ? 'title="Ação não permitida para adição manual"' : ''}>
+                        ${returnIcon}
+                    </button>
+                    <button onclick="showDiscardAlignmentConfirmation('${car.id}')" title="Descartar / Perdido" class="p-1 text-red-600 hover:bg-red-100 rounded-full transition" ${!canTakeAction ? 'disabled' : ''}>
+                        ${discardIcon}
+                    </button>
+                    <span class="text-xs text-gray-400 pr-2">Na fila...</span>
+                </div>
+            `;
         }
 
 
@@ -2369,17 +2369,59 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
         // =========================================================================
 
         // --- Helpers do Dashboard ---
-        function getStartOfTodayTimestamp() {
-            const now = new Date();
-            now.setHours(0, 0, 0, 0);
-            return Timestamp.fromDate(now);
+        // NOVO: Função genérica para obter o início de um dia
+        function getStartOfDayTimestamp(date = new Date()) {
+            const start = new Date(date);
+            start.setHours(0, 0, 0, 0);
+            return Timestamp.fromDate(start);
         }
 
-        function isTimestampFromToday(timestamp) {
+        // NOVO: Função genérica para verificar se um timestamp pertence a um dia específico
+        function isTimestampFromDay(timestamp, targetDate) {
             if (!timestamp) return false;
-            const startOfToday = getStartOfTodayTimestamp();
+            const startOfDay = getStartOfDayTimestamp(targetDate);
+            const endOfDay = new Date(startOfDay.toDate());
+            endOfDay.setHours(23, 59, 59, 999);
+
             const jobTime = new Timestamp(getTimestampSeconds(timestamp), timestamp.nanoseconds || 0);
-            return jobTime >= startOfToday;
+
+            return jobTime >= startOfDay && jobTime <= Timestamp.fromDate(endOfDay);
+        }
+
+        // NOVO: Helper para verificar se o timestamp é desta semana
+        function isTimestampFromThisWeek(timestamp) {
+            if (!timestamp) return false;
+            const now = new Date();
+            const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+            startOfWeek.setHours(0, 0, 0, 0);
+            return new Timestamp(getTimestampSeconds(timestamp), 0) >= Timestamp.fromDate(startOfWeek);
+        }
+
+        // NOVO: Helper para verificar se o timestamp é dos últimos 31 dias
+        function isTimestampFromLast31Days(timestamp) {
+            if (!timestamp) return false;
+            const thirtyOneDaysAgo = new Date();
+            thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
+            return new Timestamp(getTimestampSeconds(timestamp), 0) >= Timestamp.fromDate(thirtyOneDaysAgo);
+        }
+
+        // NOVO: Helper para verificar se o timestamp é deste mês
+        function isTimestampFromThisMonth(timestamp) {
+            if (!timestamp) return false;
+            return new Date(getTimestampSeconds(timestamp) * 1000).getMonth() === new Date().getMonth();
+        }
+
+        // NOVO: Helper para verificar se o timestamp é de um ano específico
+        function isTimestampFromYear(timestamp, year) {
+            if (!timestamp) return false;
+            return new Date(getTimestampSeconds(timestamp) * 1000).getFullYear() === year;
+        }
+
+        // NOVO: Helper para verificar se o timestamp é de um mês/ano específico
+        function isTimestampFromMonthAndYear(timestamp, month, year) {
+            if (!timestamp) return false;
+            const date = new Date(getTimestampSeconds(timestamp) * 1000);
+            return date.getFullYear() === year && date.getMonth() === month;
         }
 
         function calculateDuration(startTimestamp, endTimestamp) {
@@ -2416,8 +2458,12 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             const container = document.getElementById('pending-counts-container');
             if (!container) return;
 
-            const pendingGsJobs = serviceJobs.filter(j => j.statusGS === STATUS_PENDING);
-            const pendingTsJobs = serviceJobs.filter(j => j.statusTS === STATUS_PENDING);
+            // CORREÇÃO: A contagem de pendências deve incluir serviços em retrabalho (REWORK)
+            // e também garantir que o status geral do job seja 'Pendente'.
+            const pendingGsJobs = serviceJobs.filter(j => j.status === STATUS_PENDING && (j.statusGS === STATUS_PENDING || j.statusGS === STATUS_REWORK));
+            // CORREÇÃO: A contagem de pneus não deve incluir serviços que estão em retrabalho (REWORK) na mecânica geral.
+            const pendingTsJobs = serviceJobs.filter(j => j.status === STATUS_PENDING && j.statusTS === STATUS_PENDING && j.statusGS !== STATUS_REWORK);
+            // A contagem de alinhamento já estava correta.
             const pendingAliJobs = alignmentQueue.filter(j => j.status === STATUS_WAITING || j.status === STATUS_ATTENDING);
 
             const counts = {};
@@ -2450,17 +2496,37 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             const container = document.getElementById('daily-summary-container');
             if (!container) return;
 
-            const finalizedToday = serviceJobs.filter(j => j.status === STATUS_FINALIZED && isTimestampFromToday(j.finalizedAt)).length;
-            const lostToday = serviceJobs.filter(j => j.status === STATUS_LOST && isTimestampFromToday(j.finalizedAt)).length;
+            // ATUALIZADO: Usa a função de filtro de período correta
+            let periodFilterFn;
+            // NOVO: Se for diário, verifica se uma data específica foi selecionada
+            if (historyPeriod === 'daily') {
+                const targetDate = historyDate ? new Date(historyDate + 'T00:00:00') : new Date();
+                periodFilterFn = (ts) => isTimestampFromDay(ts, targetDate);
+            }
+            else if (historyPeriod === 'weekly') { periodFilterFn = isTimestampFromThisWeek; }
+            else if (historyPeriod === 'monthly') {
+                periodFilterFn = (ts) => isTimestampFromMonthAndYear(ts, historyMonth, historyYear);
+            } else if (historyPeriod === 'yearly') {
+                periodFilterFn = (ts) => isTimestampFromYear(ts, historyYear);
+            }
+
+            const periodLabel = { daily: 'Hoje', weekly: 'na Semana', monthly: 'no Mês' }[historyPeriod];
+
+
+            const finalizedServicesToday = serviceJobs.filter(j => j.status === STATUS_FINALIZED && periodFilterFn(j.finalizedAt)).length;
+            // CORREÇÃO: A contagem de perdidos deve incluir tanto os serviços gerais quanto os de alinhamento.
+            const lostServicesToday = serviceJobs.filter(j => j.status === STATUS_LOST && periodFilterFn(j.finalizedAt)).length;
+            const lostAlignmentsToday = alignmentQueue.filter(a => a.status === STATUS_LOST && periodFilterFn(a.finalizedAt)).length;
+            const totalLostToday = lostServicesToday + lostAlignmentsToday;
 
             container.innerHTML = `
                 <div class="flex justify-between items-center p-3 bg-green-100 rounded-lg">
                     <span class="font-semibold text-green-800">Serviços Concluídos</span>
-                    <span class="text-xl font-bold text-green-900">${finalizedToday}</span>
+                    <span class="text-xl font-bold text-green-900">${finalizedServicesToday}</span>
                 </div>
                 <div class="flex justify-between items-center p-3 bg-red-100 rounded-lg">
-                    <span class="font-semibold text-red-800">Serviços Perdidos</span>
-                    <span class="text-xl font-bold text-red-900">${lostToday}</span>
+                    <span class="font-semibold text-red-800">Serviços Perdidos (${periodLabel})</span>
+                    <span class="text-xl font-bold text-red-900">${totalLostToday}</span>
                 </div>
             `;
         }
@@ -2477,20 +2543,35 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             // ETAPA 1: Coletar e Processar Dados do Dia
             // =================================================================
 
+            // ATUALIZADO: Seleciona a função de filtro com base no estado `historyPeriod`
+            let periodFilterFn;
+            // CORREÇÃO: Removida a chamada para a função antiga 'isTimestampFromToday' e unificada a lógica.
+            if (historyPeriod === 'daily') {
+                const targetDate = historyDate ? new Date(historyDate + 'T00:00:00') : new Date();
+                periodFilterFn = (ts) => isTimestampFromDay(ts, targetDate);
+            } else if (historyPeriod === 'weekly') {
+                periodFilterFn = isTimestampFromThisWeek;
+            } else if (historyPeriod === 'monthly') {
+                periodFilterFn = (ts) => isTimestampFromMonthAndYear(ts, historyMonth, historyYear);
+            } else if (historyPeriod === 'yearly') {
+                periodFilterFn = (ts) => isTimestampFromYear(ts, historyYear);
+            }
+
+
             // ATUALIZAÇÃO: Chama as novas funções de renderização operacional
             renderPendingCounts();
             renderDailySummary();
 
-            const finalizedServicesToday = serviceJobs.filter(j => j.status === STATUS_FINALIZED && isTimestampFromToday(j.finalizedAt));
-            const finalizedAlignmentsToday = alignmentQueue.filter(a => a.status === STATUS_FINALIZED && isTimestampFromToday(a.finalizedAt));
+            const finalizedServicesToday = serviceJobs.filter(j => j.status === STATUS_FINALIZED && periodFilterFn(j.finalizedAt));
+            const finalizedAlignmentsToday = alignmentQueue.filter(a => a.status === STATUS_FINALIZED && periodFilterFn(a.finalizedAt));
 
             // Arrays para armazenar durações de cada etapa para cálculo da média geral
             const allWaitTimes = [];
             const allGsDurations = [];
             const allTsDurations = []; // NOVO: Para métricas de borracharia
             const allAliDurations = [];
-
-            const detailedHistoryList = [];
+ 
+            detailedHistoryList = []; // ATUALIZADO: Limpa a variável global
             const lostHistoryList = []; // NOVO: Para histórico de perdas
 
             // Inicializa stats para todos os mecânicos, incluindo os fixos e os do DB
@@ -2503,7 +2584,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             });
 
             // Junta todos os serviços do dia (finalizados e perdidos) para processamento
-            const allServicesToday = serviceJobs.filter(j => (j.status === STATUS_FINALIZED || j.status === STATUS_LOST) && isTimestampFromToday(j.finalizedAt));
+            const allServicesToday = serviceJobs.filter(j => (j.status === STATUS_FINALIZED || j.status === STATUS_LOST) && periodFilterFn(j.finalizedAt));
 
             // Processa Serviços Gerais (que podem incluir borracharia e alinhamento) - FINALIZADOS
             allServicesToday.filter(j => j.status === STATUS_FINALIZED).forEach(job => {
@@ -2565,7 +2646,9 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 const bottleneckStage = Object.keys(stageDurations).reduce((a, b) => stageDurations[a] > stageDurations[b] ? a : b);
 
                 detailedHistoryList.push({
+                    id: job.id, // CORREÇÃO: Adicionando o ID para o modal de detalhes
                     car: `${job.licensePlate} (${job.carModel})`,
+                    car: `${job.licensePlate} (${job.carModel || 'N/A'})`,
                     vendedor: job.vendedorName,
                     mechanics: Array.from(new Set(mecsEnvolvidos)).join(', '), // Garante mecânicos únicos
                     etapas: etapas.join(', '),
@@ -2589,6 +2672,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 }
                 lostHistoryList.push({
                     car: `${job.licensePlate} (${job.carModel})`,
+                    car: `${job.licensePlate} (${job.carModel || 'N/A'})`,
                     vendedor: job.vendedorName,
                     etapa: etapaPerda
                 });
@@ -2608,7 +2692,9 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 }
 
                 detailedHistoryList.push({
+                    id: car.id, // CORREÇÃO: Adicionando o ID para o modal de detalhes
                     car: `${car.licensePlate} (${car.carModel})`,
+                    car: `${car.licensePlate} (${car.carModel || 'N/A'})`,
                     vendedor: car.vendedorName,
                     mechanics: Array.from(new Set([ALIGNMENT_MECHANIC])).join(', '),
                     etapas: 'Alinhamento',
@@ -2756,7 +2842,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                     const role = roleMap[mec.name] || 'N/A';
                     const avgText = mec.avgMs > 0 ? `${formatDuration(mec.avgMs)}` : 'N/A';
                     return `
-                        <div class="flex justify-between items-center text-sm p-2 rounded-md even:bg-gray-50">
+                        <div class="flex justify-between items-center text-sm p-2 rounded-md even:bg-gray-50 hover:bg-blue-50 cursor-pointer" onclick="showMechanicPerformanceModal('${mec.name}')">
                             <span class="font-semibold text-gray-800">${mec.name}</span>
                             <span class="text-gray-600">${avgText} (média em ${mec.count} carro${mec.count > 1 ? 's' : ''})</span>
                         </div>
@@ -2774,13 +2860,13 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                      historyTbody.innerHTML = detailedHistoryList.map(item => {
                         const durationClass = item.durationMs > (3600000 * 2) ? 'text-red-600' : item.durationMs < 1800000 ? 'text-green-600' : 'text-gray-900';
                         return `
-                    <tr class="even:bg-gray-50/50">
+                    <tr class="even:bg-gray-50/50 hover:bg-blue-50 cursor-pointer" onclick="showHistoryDetailModal('${item.id}', '${item.etapas.includes('Alinhamento') && !item.etapas.includes('Serviço Geral') ? 'alignment' : 'service'}')">
                         <td class="px-4 py-3 text-sm font-medium text-gray-900">${item.car}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${item.vendedor}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${item.mechanics}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${item.etapas}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${item.startTime}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${item.endTime}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${item.vendedor || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${item.mechanics || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${item.etapas || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${item.startTime || '--'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${item.endTime || '--'}</td>
                         <td class="px-4 py-3 text-sm font-semibold ${durationClass} text-right">${item.durationStr}</td>
                     </tr>
                 `}).join('');
@@ -2793,13 +2879,137 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             const lostHistoryTbody = document.getElementById('lost-history-tbody');
             if (lostHistoryTbody) {
                 if (lostHistoryList.length > 0) {
-                    lostHistoryTbody.innerHTML = lostHistoryList.map(item => `
-                        <tr class="bg-red-50/30"><td class="px-4 py-3 text-sm font-medium text-gray-900">${item.car}</td><td class="px-4 py-3 text-sm text-gray-600">${item.vendedor}</td><td class="px-4 py-3 text-sm font-semibold text-red-700">${item.etapa}</td></tr>`).join('');
+                    lostHistoryTbody.innerHTML = lostHistoryList.map(item => `<tr class="bg-red-50/30"><td class="px-4 py-3 text-sm font-medium text-gray-900">${item.car}</td><td class="px-4 py-3 text-sm text-gray-600">${item.vendedor || 'N/A'}</td><td class="px-4 py-3 text-sm font-semibold text-red-700">${item.etapa}</td></tr>`).join('');
                 } else {
-                    lostHistoryTbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500 italic">Nenhum serviço perdido hoje.</td></tr>`;
+                    const periodLabel = { daily: 'hoje', weekly: 'nesta semana', monthly: 'neste mês' }[historyPeriod];
+                    lostHistoryTbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500 italic">Nenhum serviço perdido ${periodLabel}.</td></tr>`;
                 }
             }
         }
+
+
+        // =========================================================================
+        // NOVO: Função para Exportar Histórico para PDF
+        // =========================================================================
+        async function exportHistoryToPDF() {
+            try {
+                // 1. Carrega dinamicamente as bibliotecas para garantir que estejam prontas.
+                // Isso resolve problemas de escopo e tempo de carregamento com módulos.
+                await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+                await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.umd.js'); // CORREÇÃO: URL ajustado para o correto no CDN.
+
+                // 2. Acessa a classe jsPDF do módulo carregado.
+                const { jsPDF } = window.jspdf;
+
+                // 3. Instancia o documento. Agora, `doc.autoTable` deve existir.
+                const doc = new jsPDF();
+
+                // 4. Define o conteúdo do cabeçalho do documento.
+                const periodLabel = { daily: 'Diário', weekly: 'Semanal', monthly: 'Mensal', yearly: 'Anual' }[historyPeriod] || 'Período';
+                const title = `Relatório de Atendimentos - ${periodLabel}`;
+                const date = new Date().toLocaleDateString('pt-BR');
+
+                doc.setFontSize(18);
+                doc.text(title, 14, 22);
+                doc.setFontSize(11);
+                doc.setTextColor(100);
+                doc.text(`Gerado em: ${date}`, 14, 30);
+
+                // 5. Prepara os dados para a tabela a partir da variável global `detailedHistoryList`.
+                const tableData = detailedHistoryList.map(item => [
+                    item.car,
+                    item.vendedor || 'N/A',
+                    item.mechanics || 'N/A',
+                    item.startTime || '--',
+                    item.endTime || '--',
+                    item.durationStr || '--',
+                ]);
+
+                // 6. Gera a tabela no documento usando o método autoTable.
+                doc.autoTable({
+                    startY: 35,
+                    head: [['Carro', 'Vendedor', 'Responsáveis', 'Início', 'Término', 'Duração']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [22, 160, 133] }, // Cor verde
+                });
+
+                // 7. Salva o arquivo PDF.
+                const fileName = `historico_atendimentos_${historyPeriod}_${new Date().toISOString().split('T')[0]}.pdf`;
+                doc.save(fileName);
+
+            } catch (error) {
+                console.error("Falha ao gerar PDF:", error);
+                alert("Ocorreu um erro ao tentar exportar o PDF. Verifique o console para mais detalhes.");
+            }
+        }
+
+        // NOVO: Listener para o botão de exportar PDF
+        document.getElementById('export-history-pdf').addEventListener('click', exportHistoryToPDF);
+
+        /**
+         * NOVO: Controla a visibilidade dos filtros de data, mês e ano com base no período selecionado.
+         */
+        function updateHistoryFilterVisibility() {
+            const dateFilter = document.getElementById('history-date-filter');
+            const monthFilter = document.getElementById('history-month-filter');
+            const yearFilter = document.getElementById('history-year-filter');
+
+            // Esconde todos os filtros específicos primeiro
+            dateFilter.classList.add('hidden');
+            monthFilter.classList.add('hidden');
+            yearFilter.classList.add('hidden');
+
+            // Mostra os filtros relevantes
+            if (historyPeriod === 'daily') {
+                dateFilter.classList.remove('hidden');
+                historyDate = dateFilter.value || null;
+            } else if (historyPeriod === 'monthly') {
+                monthFilter.classList.remove('hidden');
+                yearFilter.classList.remove('hidden');
+            } else if (historyPeriod === 'yearly') {
+                yearFilter.classList.remove('hidden');
+            } else { // weekly
+                historyDate = null;
+                dateFilter.value = '';
+            }
+        }
+
+        // NOVO: Listener para o filtro de período
+        document.getElementById('history-period-filter').addEventListener('change', (e) => {
+            historyPeriod = e.target.value;
+            updateHistoryFilterVisibility();
+
+            calculateAndRenderDashboard(); // Recalcula e renderiza tudo com o novo período
+        });
+
+        // NOVO: Listeners para os novos filtros
+        document.getElementById('history-date-filter').addEventListener('change', (e) => {
+            historyDate = e.target.value;
+            calculateAndRenderDashboard(); // Recalcula com a nova data
+        });
+
+        document.getElementById('history-month-filter').addEventListener('change', (e) => {
+            historyMonth = parseInt(e.target.value, 10);
+            calculateAndRenderDashboard();
+        });
+
+        document.getElementById('history-year-filter').addEventListener('change', (e) => {
+            const year = parseInt(e.target.value, 10);
+            // Validação simples para o ano
+            if (String(year).length === 4) {
+                historyYear = year;
+                calculateAndRenderDashboard();
+            }
+        });
+
+        // NOVO: Inicializa os valores dos filtros de mês/ano
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('history-month-filter').value = historyMonth;
+            document.getElementById('history-year-filter').value = historyYear;
+            // CORREÇÃO: Garante que o filtro correto (diário) apareça na carga inicial.
+            updateHistoryFilterVisibility();
+        });
 
 
         // =========================================================================
@@ -2823,12 +3033,13 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 console.log("Recebidos dados de Serviços Gerais:", snapshot.docs.length);
                 const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+                // ATUALIZADO: O filtro de data foi movido para dentro do dashboard.
+                // Agora, mantemos um histórico maior (31 dias) para permitir a filtragem.
                 serviceJobs = jobs.filter(j =>
                     j.status === STATUS_PENDING ||
                     j.status === STATUS_READY ||
                     j.status === STATUS_GS_FINISHED ||
-                    (j.status === STATUS_FINALIZED && isTimestampFromToday(j.finalizedAt)) ||
-                    (j.status === STATUS_LOST && isTimestampFromToday(j.finalizedAt))
+                    ((j.status === STATUS_FINALIZED || j.status === STATUS_LOST) && isTimestampFromLast31Days(j.finalizedAt))
                 );
 
                 renderServiceQueues(serviceJobs);
@@ -2852,13 +3063,13 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 console.log("Recebidos dados de Alinhamento:", snapshot.docs.length);
                 const cars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+                // ATUALIZADO: O filtro de data foi movido para dentro do dashboard.
                 alignmentQueue = cars.filter(c =>
                     c.status === STATUS_WAITING ||
                     c.status === STATUS_ATTENDING ||
                     c.status === STATUS_WAITING_GS ||
                     c.status === STATUS_READY ||
-                    (c.status === STATUS_FINALIZED && isTimestampFromToday(c.finalizedAt)) ||
-                    (c.status === STATUS_LOST && isTimestampFromToday(c.finalizedAt))
+                    ((c.status === STATUS_FINALIZED || c.status === STATUS_LOST) && isTimestampFromLast31Days(c.finalizedAt))
                 );
 
                 renderAlignmentQueue(alignmentQueue);
@@ -2919,6 +3130,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
         window.confirmAlignmentReady = confirmAlignmentReady;
         window.showFinalizeConfirmation = showFinalizeConfirmation;
         window.confirmFinalizeJob = confirmFinalizeJob;
+        window.showSendToManagerConfirmation = showSendToManagerConfirmation; // NOVO
         window.confirmMarkAsLost = confirmMarkAsLost;
         window.showDefineServiceModal = showDefineServiceModal;
         window.hideDefineServiceModal = hideDefineServiceModal;
@@ -2935,6 +3147,15 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
 
         window.showEditUserModal = showEditUserModal; // NOVO
         window.hideEditUserModal = hideEditUserModal; // NOVO
+
+        // NOVO: Funções de modal de texto e detalhes
+        window.showFullDescriptionModal = showFullDescriptionModal; // CORREÇÃO: Expondo a função globalmente
+        window.hideTextDisplayModal = hideTextDisplayModal; // CORREÇÃO: Expondo a função globalmente
+        window.showHistoryDetailModal = showHistoryDetailModal;
+        window.hideHistoryDetailModal = hideHistoryDetailModal;
+        // NOVO: Funções do modal de desempenho do mecânico
+        window.showMechanicPerformanceModal = showMechanicPerformanceModal;
+        window.hideMechanicPerformanceModal = hideMechanicPerformanceModal;
 
         window.confirmDeleteUser = confirmDeleteUser; // NOVO
         document.getElementById('create-user-form').addEventListener('submit', handleCreateUser);
@@ -2979,3 +3200,127 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 button.classList.add('active');
             });
         });
+
+        // =========================================================================
+        // NOVO: Funções de Modais Adicionais
+        // =========================================================================
+
+        /**
+         * Exibe um modal com um texto completo. Usado para "Ver mais".
+         * @param {string} encodedText - O texto a ser exibido, codificado com escape().
+         */
+        function showFullDescriptionModal(encodedText) {
+            const text = unescape(encodedText);
+            document.getElementById('text-display-content').textContent = text;
+            document.getElementById('text-display-modal').classList.remove('hidden');
+        }
+
+        function hideTextDisplayModal() {
+            document.getElementById('text-display-modal').classList.add('hidden');
+        }
+
+        /**
+         * Exibe um modal com os detalhes de um serviço do histórico.
+         * @param {string} jobId - O ID do serviço a ser detalhado.
+         */
+        function showHistoryDetailModal(jobId, type) {
+            // CORREÇÃO: Procura o job na lista correta (serviços ou alinhamento)
+            let job;
+            if (type === 'service') {
+                job = serviceJobs.find(j => j.id === jobId);
+            } else {
+                job = alignmentQueue.find(j => j.id === jobId);
+            }
+
+            if (!job) {
+                alertUser("Detalhes não encontrados para este serviço.");
+                return;
+            }
+
+            const contentEl = document.getElementById('history-detail-content');
+            const isService = type === 'service';
+
+            // CORREÇÃO: Melhora a exibição dos detalhes, mostrando mais informações de tempo.
+            contentEl.innerHTML = `
+                <div class="space-y-3">
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p><strong>Carro:</strong> ${job.carModel} (${job.licensePlate})</p>
+                        <p><strong>Vendedor:</strong> ${job.vendedorName || 'N/A'}</p>
+                    </div>
+                    <hr>
+                    <div class="text-sm space-y-2">
+                        ${isService ? `
+                            <p><strong>Serviço Geral (${job.assignedMechanic || 'N/A'}):</strong> ${formatTime(job.gsStartedAt)} - ${formatTime(job.gsFinishedAt)}</p>
+                            ${job.statusTS ? `<p><strong>Borracharia:</strong> ${formatTime(job.tsStartedAt)} - ${formatTime(job.tsFinishedAt)}</p>` : ''}
+                        ` : ''}
+                        
+                        ${(isService && job.requiresAlignment) || !isService ? `
+                            <p><strong>Alinhamento:</strong> ${formatTime(job.alignmentStartedAt)} - ${formatTime(job.readyAt)}</p>
+                        ` : ''}
+                    </div>
+                    <hr>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p><strong>Descrição do Serviço:</strong></p>
+                        <p class="text-gray-600 break-words">${job.serviceDescription || (isService ? 'Avaliação' : 'Alinhamento Manual')}</p>
+                    </div>
+                    <hr>
+                    <div class="text-center font-bold">
+                        <p>Duração Total: <span class="text-lg">${formatDuration(calculateDuration(job.timestamp, job.finalizedAt))}</span></p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('history-detail-modal').classList.remove('hidden');
+        }
+
+        function hideHistoryDetailModal() {
+            document.getElementById('history-detail-modal').classList.add('hidden');
+        }
+
+        /**
+         * NOVO: Exibe um modal com os detalhes de desempenho de um mecânico.
+         * @param {string} mechanicName - O nome do mecânico.
+         */
+        function showMechanicPerformanceModal(mechanicName) {
+            const modal = document.getElementById('mechanic-performance-modal');
+            const titleEl = document.getElementById('mechanic-performance-title');
+            const contentEl = document.getElementById('mechanic-performance-content');
+
+            const periodLabel = { daily: 'Diário', weekly: 'Semanal', monthly: 'Mensal' }[historyPeriod];
+            titleEl.textContent = `Desempenho de ${mechanicName} (${periodLabel})`;
+
+            // Filtra a lista de histórico detalhado para encontrar os serviços do mecânico
+            const mechanicServices = detailedHistoryList.filter(item =>
+                item.mechanics && item.mechanics.includes(mechanicName)
+            );
+
+            if (mechanicServices.length === 0) {
+                contentEl.innerHTML = '<p class="text-center italic">Nenhum serviço finalizado por este mecânico no período.</p>';
+            } else {
+                contentEl.innerHTML = `
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Carro</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendedor</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Etapas</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Duração Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${mechanicServices.map(item => `
+                                <tr>
+                                    <td class="px-4 py-2 text-sm font-medium text-gray-900">${item.car}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-600">${item.vendedor}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-600">${item.etapas}</td>
+                                    <td class="px-4 py-2 text-sm font-semibold text-gray-800 text-right">${item.durationStr}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function hideMechanicPerformanceModal() {
+            document.getElementById('mechanic-performance-modal').classList.add('hidden');
+        }

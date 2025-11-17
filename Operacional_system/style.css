@@ -6,7 +6,7 @@ body {
     justify-content: center;
     align-items: flex-start;
     min-height: 100vh;
-    /* padding: 20px; */ /* REMOVIDO: Este padding pode estar causando o desalinhamento */
+    padding: 20px;
 }
 
 /* NOVO: Restaurando o container principal para um tamanho fixo e centralizado */
