@@ -48,9 +48,9 @@ const SCROLL_STEP = 1; // Pixels por passo (menor para ser mais suave)
 // --- NOVO: Estado do Ciclo de Anúncios (RF005) ---
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev'; // URL da API de Marketing
 let adCycleTimeout = null; 
+let adDisplayTimeout = null; // NOVO: Timer para a duração da exibição do anúncio
 let currentAdIndex = 0;
-const AD_CYCLE_INTERVAL = 60 * 1000; // 60 segundos
-const DEFAULT_IMAGE_AD_DURATION = 20 * 1000; // 20 segundos
+const CYCLE_INTERVAL = 30 * 1000; // 30 segundos para cada etapa (fila ou anúncio)
 const readyAlert = document.getElementById('ready-alert');
 
 
@@ -59,21 +59,11 @@ const queueContainer = document.getElementById('queue-container');
 const adContainer = document.getElementById('ad-container');
 
 /**
- * Verifica se o usuário logado tem permissão para ver esta página.
- * Redireciona para o login caso não tenha. (RNF002)
+ * NOVO: Importa a função de login anônimo do Firebase.
  */
-function checkAuth() {
-    const user = JSON.parse(localStorage.getItem('currentUser'));
-    if (!user || user.role !== CLIENT_ROLE) {
-        console.warn('Acesso negado. Redirecionando para o login.');
-        window.location.href = '../auth/index.html';
-    } else {
-        console.log(`Usuário '${user.username}' autenticado com sucesso como '${user.role}'.`);
-        // NOVO: A inicialização agora depende da autenticação do Firebase.
-        waitForFirebaseAuth();
-    }
-}
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
+/**
 /**
  * NOVO: Aguarda a confirmação da sessão anônima do Firebase antes de iniciar os listeners.
  * Isso resolve o problema de permissão que ocorria antes.
@@ -81,7 +71,12 @@ function checkAuth() {
 function waitForFirebaseAuth() {
     onAuthStateChanged(auth, (user) => {
         if (user) { // Usuário anônimo está logado
+            console.log("Usuário anônimo autenticado com sucesso no Firebase.");
             initializeSystem();
+        } else {
+            // Se não houver usuário, tenta fazer o login anônimo.
+            console.log("Nenhum usuário. Tentando login anônimo...");
+            signInAnonymously(auth).catch(error => console.error("Falha no login anônimo:", error));
         }
     });
 }
@@ -100,18 +95,19 @@ function initializeSystem() {
  * Configura um relógio em tempo real no cabeçalho.
  */
 function setupClock() {
-    const clockElement = document.getElementById('clock');
+    const clockElement = document.getElementById('datetime-display');
     if (!clockElement) return;
 
     function updateClock() {
         const now = new Date();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        clockElement.textContent = `${hours}:${minutes}`;
+        const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+        const dateString = now.toLocaleDateString('pt-BR', options);
+        const timeString = now.toLocaleTimeString('pt-BR');
+        clockElement.textContent = `${dateString.replace(/\.$/, '')} | ${timeString}`; // Remove o ponto final do "short" weekday
     }
 
     updateClock();
-    setInterval(updateClock, 10000); // Atualiza a cada 10 segundos
+    setInterval(updateClock, 1000); // Atualiza a cada segundo
 }
 
 /**
@@ -128,7 +124,7 @@ function setupRealtimeListeners() {
         renderDisplay();
     }, (error) => {
         console.error("Erro ao ouvir serviços:", error);
-        document.getElementById('service-list').innerHTML = `<p class="text-red-400">Erro ao carregar dados dos serviços.</p>`;
+        document.getElementById('ongoing-services-table').innerHTML = `<tr><td colspan="4">Erro ao carregar dados.</td></tr>`;
     });
 
     const alignmentQuery = query(
@@ -141,7 +137,7 @@ function setupRealtimeListeners() {
         renderDisplay();
     }, (error) => {
         console.error("Erro ao ouvir fila de alinhamento:", error);
-        document.getElementById('service-list').innerHTML += `<p class="text-red-400">Erro ao carregar dados do alinhamento.</p>`;
+        document.getElementById('ongoing-services-table').innerHTML += `<tr><td colspan="4">Erro ao carregar dados.</td></tr>`;
     });
 }
 
@@ -156,7 +152,7 @@ function renderDisplay() {
     // Processa carros da fila de alinhamento
     alignmentQueue.forEach(car => {
         if (car.status === STATUS_READY) {
-            readyItems.push({ plate: car.licensePlate, model: car.carModel });
+            readyItems.push({ plate: car.licensePlate, client: car.clientName || 'N/A', service: 'Alinhamento' });
         } else {
             let priority = 99;
             let statusText = "Na fila";
@@ -164,14 +160,14 @@ function renderDisplay() {
             else if (car.status === STATUS_WAITING) { priority = 2; statusText = "Aguardando Alinhamento"; }
             else if (car.status === STATUS_WAITING_GS) { priority = 3; statusText = "Aguardando Serviço Geral"; }
             
-            displayItems.push({ plate: car.licensePlate, model: car.carModel, status: statusText, priority });
+            displayItems.push({ plate: car.licensePlate, client: car.clientName || 'N/A', service: 'Alinhamento', status: statusText, priority, statusClass: car.status === STATUS_ATTENDING ? 'in-progress' : 'waiting' });
         }
     });
 
     // Processa carros da fila de serviços gerais
     serviceJobs.forEach(job => {
         if (job.status === STATUS_READY) {
-            readyItems.push({ plate: job.licensePlate, model: job.carModel });
+            readyItems.push({ plate: job.licensePlate, client: job.clientName || 'N/A', service: 'Serviço Geral' });
         } else if (job.status === STATUS_PENDING) {
             let statusText = "Em serviço";
             let priority = 5;
@@ -182,7 +178,7 @@ function renderDisplay() {
             } else if (job.statusTS === 'Pendente') {
                 statusText = "Serviço de Pneus";
             }
-            displayItems.push({ plate: job.licensePlate, model: job.model, status: statusText, priority });
+            displayItems.push({ plate: job.licensePlate, client: job.clientName || 'N/A', service: statusText, status: 'Em Andamento', priority, statusClass: 'in-progress' });
         }
     });
 
@@ -192,7 +188,7 @@ function renderDisplay() {
     // 3. Renderiza as listas
     renderServiceList(displayItems);
     renderReadyList(readyItems);
-    handleAutoScroll(); // Inicia ou para o auto-scroll
+    // handleAutoScroll(); // A rolagem automática foi removida do escopo do novo layout
 }
 
 /**
@@ -200,35 +196,33 @@ function renderDisplay() {
  * @param {Array} items - A lista de itens para exibir.
  */
 function renderServiceList(items) {
-    const container = document.getElementById('service-list');
+    const tableBody = document.getElementById('ongoing-services-table');
     if (items.length === 0) {
-        container.innerHTML = `<p class="col-span-2 text-center text-2xl text-gray-400 mt-10">Nenhum veículo em atendimento no momento.</p>`;
+        tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem;">Nenhum veículo em atendimento.</td></tr>`;
         return;
     }
-    container.innerHTML = items.map((item, index) => `
-        <div class="service-card bg-white p-3 rounded-lg shadow-sm border-l-8 border-blue-500 flex items-center">
-            <span class="text-2xl font-bold text-gray-400 w-12 text-center">${index + 1}º</span>
-            <div class="flex-grow border-l border-gray-200 pl-3">
-                <p class="text-2xl font-bold text-gray-800">${item.plate}</p>
-                <p class="text-lg text-gray-500">${item.model}</p>
-            </div>
-            <div class="text-right pr-3">
-                <p class="text-lg font-bold text-yellow-500">${item.status}</p>
-            </div>
-        </div>
+    tableBody.innerHTML = items.map((item, index) => `
+        <tr>
+            <td><div class="queue-position">${index + 1}º</div></td>
+            <td>${item.plate}</td>
+            <td>${item.service}</td>
+            <td><span class="status-badge ${item.statusClass}">${item.status}</span></td>
+        </tr>
     `).join('');
 }
 
 /**
- * Renderiza a lista de serviços concluídos no rodapé. (RF004)
+ * Renderiza a lista de serviços concluídos.
  * @param {Array} items - A lista de itens prontos.
  */
 function renderReadyList(items) {
-    const container = document.getElementById('ready-list');
-    container.innerHTML = items.map(item => `
-        <div class="bg-green-100 border border-green-300 p-3 rounded-lg text-center shadow-sm">
-            <p class="font-bold text-xl text-green-800">${item.plate}</p>
-        </div>
+    const tableBody = document.getElementById('completed-services-table');
+    tableBody.innerHTML = items.map(item => `
+        <tr>
+            <td>${item.plate}</td>
+            <td>${item.service}</td>
+            <td><span class="status-badge ready">Pronto</span></td>
+        </tr>
     `).join('');
 }
 
@@ -236,39 +230,8 @@ function renderReadyList(items) {
  * NOVO: Gerencia a rolagem automática da lista de serviços.
  */
 function handleAutoScroll() {
-    const container = document.getElementById('service-list');
-    
-    // Limpa timers e intervalos anteriores para evitar loops duplicados
-    if (scrollTimeout) clearTimeout(scrollTimeout);
-    if (scrollInterval) {
-        clearInterval(scrollInterval);
-        scrollInterval = null;
-    }
-
-    // Volta ao topo sempre que a função é chamada (após um anúncio ou ao chegar no fim)
-    container.scrollTop = 0;
-
-    const isOverflowing = container.scrollHeight > container.clientHeight;
-    if (isOverflowing) {
-        // Função que inicia a rolagem para baixo
-        const startScrollingDown = () => {
-            scrollInterval = setInterval(() => {
-                const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight;
-
-                if (atBottom) {
-                    // Chegou ao fim, limpa o intervalo e reinicia o ciclo
-                    clearInterval(scrollInterval);
-                    handleAutoScroll(); 
-                } else {
-                    // Continua rolando para baixo
-                    container.scrollBy({ top: SCROLL_STEP, behavior: 'smooth' });
-                }
-            }, SCROLL_SPEED);
-        };
-
-        // Fica no topo por 30 segundos e então começa a descer
-        scrollTimeout = setTimeout(startScrollingDown, SCROLL_WAIT_AT_TOP);
-    }
+    // A rolagem automática foi desativada para o novo layout,
+    // pois cada tabela tem sua própria rolagem interna se necessário.
 }
 
 // =========================================================================
@@ -307,8 +270,8 @@ function startAdCycle() {
         clearTimeout(adCycleTimeout);
     }
     // Agenda a próxima exibição de anúncio
-    adCycleTimeout = setTimeout(showNextAd, AD_CYCLE_INTERVAL);
-    console.log(`Ciclo de anúncios iniciado. Próximo anúncio em ${AD_CYCLE_INTERVAL / 60000} minutos.`);
+    adCycleTimeout = setTimeout(showNextAd, CYCLE_INTERVAL);
+    console.log(`Ciclo iniciado. Próxima troca em ${CYCLE_INTERVAL / 1000} segundos.`);
 }
 
 /**
@@ -328,6 +291,7 @@ function showNextAd() {
 
     // Para a rolagem da fila e esconde o container
     if (scrollInterval) clearInterval(scrollInterval);
+    if (adDisplayTimeout) clearTimeout(adDisplayTimeout); // Limpa timer anterior
     queueContainer.classList.add('fade-hidden'); // Inicia o fade-out da fila
 
     setTimeout(() => { // Aguarda a transição para trocar os conteúdos
@@ -335,22 +299,23 @@ function showNextAd() {
         adContainer.innerHTML = ''; // Limpa anúncios anteriores
         adContainer.classList.remove('hidden', 'fade-hidden');
 
+        let adElement;
         if (ad.type === 'video') {
             const video = document.createElement('video'); // RF005
             video.src = ad.url;
             video.autoplay = true;
             video.muted = true; // Autoplay com som geralmente é bloqueado
             video.playsInline = true;
-            video.onended = hideAdAndResume; // Volta para a fila quando o vídeo termina
-            adContainer.appendChild(video);
+            video.loop = true; // Garante que o vídeo continue se for curto
+            adElement = video;
         } else { // 'image'
             const img = document.createElement('img'); // RF005
             img.src = ad.url;
-            adContainer.appendChild(img);
-            // Volta para a fila após o tempo configurado (ou padrão de 20s)
-            const duration = (ad.duration || DEFAULT_IMAGE_AD_DURATION);
-            setTimeout(hideAdAndResume, duration);
+            adElement = img;
         }
+        adContainer.appendChild(adElement);
+        // Volta para a fila após o tempo fixo de 30 segundos
+        adDisplayTimeout = setTimeout(hideAdAndResume, CYCLE_INTERVAL);
     }, 400); // Tempo da transição em ms
 }
 
@@ -362,12 +327,12 @@ function hideAdAndResume() {
     setTimeout(() => {
         adContainer.classList.add('hidden'); // Esconde o container do anúncio
         queueContainer.classList.remove('hidden', 'fade-hidden');
-        handleAutoScroll(); // Retoma a rolagem automática da fila
+        // handleAutoScroll(); // Rolagem não é mais necessária no novo layout
         startAdCycle(); // Reagenda o próximo anúncio
     }, 400); // Tempo da transição em ms
 }
 
 // --- Inicialização ---
 document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
+    waitForFirebaseAuth(); // Inicia diretamente a verificação do Firebase.
 });

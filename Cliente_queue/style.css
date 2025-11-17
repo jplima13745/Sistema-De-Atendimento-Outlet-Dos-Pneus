@@ -1,52 +1,330 @@
-body, html {
-    font-family: 'Inter', sans-serif;
-    height: 100%;
+/* 1. Estilo Geral e Cores */
+:root {
+    --blue-dark: #01234F; /* Azul bem escuro */
+    --green: #4CAF50;
+    --yellow: #FFD600;
+    --blue-light: #2196F3;
+    --text-dark: #212121;
+    --text-light: #FFFFFF;
+    --background-page: #F4F7F6;
+    --grey-light: #BDBDBD;
+    --grey-divider: #E0E0E0;
+}
+
+* {
     margin: 0;
     padding: 0;
-    overflow: hidden;
-    background-color: #f3f4f6; /* bg-gray-100 */
+    box-sizing: border-box;
 }
 
-/* Estilo para a tela verde de alerta (RF003) */
-#ready-alert {
-    position: fixed;
-    inset: 0;
-    background-color: #10B981; /* bg-emerald-500 */
-    color: white;    
-    /* display: flex; */ /* REMOVIDO: Esta linha causa a sobreposição da tela verde */
+html, body {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--background-page);
+    color: var(--text-dark);
+}
+
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+/* 2. Estrutura do Layout (Componentes) */
+
+/* Cabeçalho (Header) */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--blue-dark);
+    color: var(--text-light);
+    padding: 0.75rem 2rem;
+    flex-shrink: 0;
+}
+
+.header .logo {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.header .logo span:first-child {
+    color: var(--blue-light);
+}
+
+.header .logo span:last-child {
+    color: var(--yellow);
+}
+
+.header .datetime {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1rem;
+    font-weight: 400;
+    text-transform: capitalize;
+    color: rgba(255, 255, 255, 0.8); /* Branco com leve transparência */
+}
+
+.header .datetime i {
+    font-size: 1.2rem;
+}
+
+/* Corpo Principal (Main Body) */
+.main-body {
+    display: flex;
+    flex-grow: 1;
+    padding: 1.5rem;
+    gap: 1.5rem;
+    overflow: hidden;
+}
+
+.services-column {
+    flex: 0 0 70%;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow: hidden;
+}
+
+.promotions-column {
+    flex: 0 0 30%;
+    overflow: hidden;
+}
+
+/* Estilo comum para seções */
+.section-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    padding: 0.8rem 1.5rem;
+    color: var(--text-light);
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.section-header i {
+    margin-right: 1rem;
+    font-size: 1.5rem;
+}
+
+/* Coluna da Esquerda (Serviços) */
+.ongoing-services { flex-grow: 2; } /* Ocupa mais espaço */
+.completed-services { flex-grow: 1; } /* Ocupa menos espaço */
+
+.ongoing-services .section-header { background-color: var(--blue-dark); }
+.completed-services .section-header { background-color: var(--green); }
+
+.table-container {
+    padding: 1rem 1.5rem;
+    overflow-y: auto; /* Permite scroll interno se necessário */
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 1.05rem;
+}
+
+th, td {
+    padding: 1rem 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--grey-divider);
+}
+
+th {
+    font-weight: 500;
+    color: var(--grey-light);
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+td {
+    vertical-align: middle;
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Componentes Especiais da Tabela */
+.status-badge {
+    padding: 0.4rem 0.8rem;
+    border-radius: 16px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-align: center;
+    display: inline-block;
+}
+
+.status-badge.in-progress {
+    background-color: var(--blue-light);
+    color: var(--text-light);
+}
+
+.status-badge.waiting {
+    background-color: var(--yellow);
+    color: var(--text-dark);
+}
+
+.status-badge.ready {
+    background-color: var(--green);
+    color: var(--text-light);
+}
+
+.queue-position {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--yellow);
+    color: var(--text-dark);
+    display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
-    text-align: center;
-    /* A propriedade 'display' foi removida daqui para respeitar a classe 'hidden' do HTML */
+    font-weight: 700;
+    font-size: 1.1rem;
 }
 
-/* Estilo para o container de anúncios (RF005) e fila */
-#queue-container,
-#ad-container img,
-#ad-container video {
+.legend {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--grey-divider);
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.9rem;
+    color: #616161;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+.dot-waiting { background-color: var(--yellow); }
+.dot-in-progress { background-color: var(--blue-light); }
+.dot-finished { background-color: var(--green); }
+
+/* Coluna da Direita (Promoções) */
+.promotions-sidebar { height: 100%; }
+.promotions-sidebar .section-header {
+    background-color: var(--yellow);
+    color: var(--text-dark);
+}
+
+.promotions-list {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto;
+}
+
+.promo-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--grey-divider);
+}
+.promo-card:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.promo-icon {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.8rem;
+}
+.promo-icon.tire { background-color: #E3F2FD; color: #1E88E5; }
+.promo-icon.alignment { background-color: #E8F5E9; color: #43A047; }
+.promo-icon.oil { background-color: #FFF8E1; color: #FFB300; }
+.promo-icon.suspension { background-color: #F3E5F5; color: #8E24AA; }
+
+.promo-details {
+    flex-grow: 1;
+}
+
+.promo-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.promo-description {
+    font-size: 0.9rem;
+    color: #757575;
+    margin: 0.25rem 0;
+}
+
+.promo-offer {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--green);
+    margin: 0.5rem 0;
+}
+
+.promo-validity {
+    font-size: 0.8rem;
+    color: var(--grey-light);
+}
+
+/* Estilos para Anúncios e Transições */
+.hidden {
+    display: none !important;
+}
+
+#ad-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#ad-container img, #ad-container video {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* Garante que o anúncio caiba na tela */
+    object-fit: contain;
 }
 
-/* NOVO: Adiciona transição suave de opacidade */
-#queue-container,
-#ad-container {
+#queue-container, #ad-container {
     transition: opacity 0.4s ease-in-out;
 }
 
-/* NOVO: Classe para controlar o fade-out */
 .fade-hidden {
     opacity: 0;
-    pointer-events: none; /* Impede interação durante a transição */
+    pointer-events: none;
 }
 
-/* NOVO: Esconde a barra de rolagem da lista de serviços */
-#service-list {
+.table-container {
     -ms-overflow-style: none;  /* IE e Edge */
     scrollbar-width: none;  /* Firefox */
 }
-#service-list::-webkit-scrollbar {
+.table-container::-webkit-scrollbar {
     display: none; /* Chrome, Safari, Opera */
 }

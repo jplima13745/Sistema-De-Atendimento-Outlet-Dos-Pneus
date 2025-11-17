@@ -3,41 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fila de Serviços - Outlet dos Pneus</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Dashboard - Outlet dos Pneus</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
 </head>
-<body class="bg-gray-100 text-gray-800 overflow-hidden">
+<body>
 
-    <!-- Container Principal: Fila de Veículos -->
-    <main id="queue-container" class="flex flex-col h-screen">
-        <!-- Cabeçalho com as cores da loja -->
-        <header class="bg-blue-900 text-white p-4 shadow-lg flex justify-between items-center">
-            <div>
-                <h1 class="text-3xl font-bold">Outlet <span class="text-yellow-400">dos Pneus</span></h1>
-                <p class="text-base text-blue-200">Acompanhe seu veículo em tempo real</p>
+    <div id="queue-container" class="dashboard-container">
+        <!-- 1. Cabeçalho -->
+        <header class="header">
+            <div class="logo">
+                <span>Outlet</span><span>dos Pneus</span>
             </div>
-            <div id="clock" class="text-3xl font-semibold">14:30</div>
+            <div class="datetime">
+                <i class="fa-regular fa-calendar-days"></i>
+                <span id="datetime-display"></span>
+            </div>
         </header>
 
-        <div id="service-list" class="flex-grow p-4 overflow-y-auto grid grid-cols-1 gap-2">
-            <!-- Os carros em serviço serão inseridos aqui pelo script.js -->
-        </div>
+        <!-- 2. Corpo Principal -->
+        <main class="main-body">
+            <!-- Coluna da Esquerda (Serviços) -->
+            <section class="services-column">
+                <!-- Seção 1: Serviços em Andamento -->
+                <div class="section-card ongoing-services">
+                    <div class="section-header">
+                        <i class="fa-solid fa-wrench"></i>
+                        <span>SERVIÇOS EM ANDAMENTO</span>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Posição</th>
+                                    <th>Placa</th>
+                                    <th>Tipo de Serviço</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ongoing-services-table">
+                                <!-- Linhas serão inseridas pelo JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item"><span class="legend-dot dot-waiting"></span> Aguardando</div>
+                        <div class="legend-item"><span class="legend-dot dot-in-progress"></span> Em Andamento</div>
+                        <div class="legend-item"><span class="legend-dot dot-finished"></span> Finalizado</div>
+                    </div>
+                </div>
 
-        <footer class="p-3 bg-white border-t border-gray-200">
-            <h2 class="text-lg font-semibold mb-2 text-gray-700">Prontos para Retirada</h2>
-            <div id="ready-list" class="flex flex-wrap gap-2">
-                <!-- Os carros prontos serão inseridos aqui -->
-            </div>
-        </footer>
-    </main>
+                <!-- Seção 2: Serviços Concluídos -->
+                <div class="section-card completed-services">
+                    <div class="section-header">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>SERVIÇOS CONCLUÍDOS</span>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Placa</th>
+                                    <th>Tipo de Serviço</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="completed-services-table">
+                                <!-- Linhas serão inseridas pelo JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
-    <!-- Tela de Anúncios (inicialmente oculta) -->
-    <div id="ad-container" class="hidden fixed inset-0"></div>
+            <!-- Coluna da Direita (Promoções) -->
+            <aside class="promotions-column">
+                <div class="section-card promotions-sidebar">
+                    <div class="section-header">
+                        <i class="fa-solid fa-tags"></i>
+                        <span>PROMOÇÕES DA SEMANA</span>
+                    </div>
+                    <div class="promotions-list">
+                        <!-- Card de Promoção 1 -->
+                        <div class="promo-card">
+                            <div class="promo-icon tire"><i class="fa-solid fa-truck-monster"></i></div>
+                            <div class="promo-details">
+                                <p class="promo-title">4 Pneus Aro 14</p>
+                                <p class="promo-description">Pneus de qualidade premium para seu carro.</p>
+                                <p class="promo-offer">R$ 999,90</p>
+                                <p class="promo-validity">Válido até 30/11/2025</p>
+                            </div>
+                        </div>
+                        <!-- Card de Promoção 2 -->
+                        <div class="promo-card">
+                            <div class="promo-icon alignment"><i class="fa-solid fa-ruler-combined"></i></div>
+                            <div class="promo-details">
+                                <p class="promo-title">Alinhamento + Balanceamento</p>
+                                <p class="promo-description">Deixe seu carro perfeitamente alinhado.</p>
+                                <p class="promo-offer">30% OFF</p>
+                                <p class="promo-validity">Válido até 30/11/2025</p>
+                            </div>
+                        </div>
+                        <!-- Card de Promoção 3 -->
+                        <div class="promo-card">
+                            <div class="promo-icon oil"><i class="fa-solid fa-oil-can"></i></div>
+                            <div class="promo-details">
+                                <p class="promo-title">Troca de Óleo</p>
+                                <p class="promo-description">Use o óleo recomendado pela montadora.</p>
+                                <p class="promo-offer">BRINDE: Filtro de Ar</p>
+                                <p class="promo-validity">Válido até 30/11/2025</p>
+                            </div>
+                        </div>
+                        <!-- Card de Promoção 4 -->
+                        <div class="promo-card">
+                            <div class="promo-icon suspension"><i class="fa-solid fa-car-burst"></i></div>
+                            <div class="promo-details">
+                                <p class="promo-title">Revisão de Suspensão</p>
+                                <p class="promo-description">Segurança e conforto para você e sua família.</p>
+                                <p class="promo-offer">A partir de R$ 150,00</p>
+                                <p class="promo-validity">Válido até 30/11/2025</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
 
-    <!-- Tela Verde de Alerta (inicialmente oculta) -->
-    <div id="ready-alert" class="hidden"></div>
+    <!-- Container para Anúncios (oculto por padrão) -->
+    <div id="ad-container" class="hidden"></div>
 
     <script src="script.js" type="module"></script>
 </body>

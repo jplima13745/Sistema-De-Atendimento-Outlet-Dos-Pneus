@@ -17,25 +17,13 @@ const app = initializeApp(LOCAL_FIREBASE_CONFIG);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// **CORREÇÃO:** Realiza um login anônimo para obter permissão de leitura no Firestore.
-// Isso é essencial para que a consulta de usuários funcione antes do login real.
-signInAnonymously(auth)
-    .then(() => {
-        console.log("Login anônimo bem-sucedido. Pronto para consultar usuários.");
-    })
-    .catch((error) => {
-        console.error("Erro no login anônimo:", error);
-        const errorElement = document.getElementById('login-error');
-        if(errorElement) errorElement.textContent = 'Falha na conexão inicial com o servidor. Verifique suas regras de segurança do Firebase.';
-    });
-
 // --- Constantes de Perfis e Coleções ---
 const MANAGER_ROLE = 'manager';
 const VENDEDOR_ROLE = 'vendedor';
 const ANALISTA_MARKETING_ROLE = 'analista_marketing'; // Novo perfil
 const CLIENT_ROLE = 'cliente'; // NOVO: Perfil para a tela da fila (RF008)
 
-const ALLOWED_MARKETING_PROFILES = [VENDEDOR_ROLE, MANAGER_ROLE, ANALISTA_MARKETING_ROLE];
+const ALLOWED_MARKETING_PROFILES = [VENDEDOR_ROLE, ANALISTA_MARKETING_ROLE];
 const ALLOWED_OPERATIONAL_PROFILES = [VENDEDOR_ROLE, MANAGER_ROLE, 'mecanico', 'aligner'];
 const ALLOWED_CLIENT_PROFILES = [CLIENT_ROLE]; // NOVO
 
@@ -97,18 +85,16 @@ async function handleLogin(e) {
         localStorage.setItem('currentUser', JSON.stringify(user));
 
         // RF003: Redirecionamento baseado no perfil
-        if (user.role === ANALISTA_MARKETING_ROLE) {
-            await logAccessAttempt(user.id, user.role, true, 'marketing_interface');
-            window.location.href = '../marketing_interface/index.html';
-        } else if (ALLOWED_OPERATIONAL_PROFILES.includes(user.role)) {
+        if (ALLOWED_OPERATIONAL_PROFILES.includes(user.role)) {
             await logAccessAttempt(user.id, user.role, true, 'operacional_system');
-            window.location.href = '../Operacional_system/index.html';
+            window.location.href = '../Operacional_system/index.html'; // CORREÇÃO: Caminho relativo
+        } else if (ALLOWED_MARKETING_PROFILES.includes(user.role)) { // CORREÇÃO: Verifica primeiro o perfil de marketing
+            await logAccessAttempt(user.id, user.role, true, 'marketing_interface');
+            window.location.href = '../marketing_interface/index.html'; // CORREÇÃO: Caminho relativo
         } else if (ALLOWED_CLIENT_PROFILES.includes(user.role)) {
             await logAccessAttempt(user.id, user.role, true, 'Cliente_queue');
-            // NOVO: Realiza login anônimo para dar permissão de leitura à tela do cliente.
-            // Isso é necessário para que os listeners do Firestore funcionem.
-            await signInAnonymously(auth);
-            window.location.href = '../Cliente_queue/index.html';
+            await signInAnonymously(auth); // Garante permissão de leitura para a tela do cliente
+            window.location.href = '../Cliente_queue/index.html'; // CORREÇÃO: Caminho relativo
         } else {
             // RF002: Bloqueia perfis não autorizados
             await logAccessAttempt(user.id, user.role, false, 'any');
