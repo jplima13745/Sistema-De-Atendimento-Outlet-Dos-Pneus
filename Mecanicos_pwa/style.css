@@ -1,0 +1,29 @@
+/* Estilos personalizados para o PWA */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f3f4f6;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+/* Container principal da aplicação */
+.app-container {
+    background-color: white;
+    border-radius: 1rem; /* Bordas arredondadas */
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* Sombra suave */
+    max-width: 1400px; /* Largura máxima */
+    width: 95%; /* Ocupa 95% da tela até o máximo */
+    min-height: 700px; /* Altura mínima */
+    overflow: hidden; /* Garante que o conteúdo não vaze das bordas arredondadas */
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
