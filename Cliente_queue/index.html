@@ -28,53 +28,55 @@
         <main class="main-body">
             <!-- Coluna da Esquerda (Serviços) -->
             <section class="services-column">
-                <!-- Seção 1: Serviços em Andamento -->
-                <div class="section-card ongoing-services">
-                    <div class="section-header">
-                        <i class="fa-solid fa-wrench"></i>
-                        <span>SERVIÇOS EM ANDAMENTO</span>
+                <div class="services-container">
+                    <!-- Seção 1: Serviços em Andamento -->
+                    <div class="section-card ongoing-services">
+                        <div class="section-header">
+                            <i class="fa-solid fa-wrench"></i>
+                            <span>SERVIÇOS EM ANDAMENTO</span>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Posição</th>
+                                        <th>Placa</th>
+                                        <th>Tipo de Serviço</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ongoing-services-table">
+                                    <!-- Linhas serão inseridas pelo JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-item"><span class="legend-dot dot-waiting"></span> Aguardando</div>
+                            <div class="legend-item"><span class="legend-dot dot-in-progress"></span> Em Andamento</div>
+                            <div class="legend-item"><span class="legend-dot dot-finished"></span> Finalizado</div>
+                        </div>
                     </div>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Posição</th>
-                                    <th>Placa</th>
-                                    <th>Tipo de Serviço</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ongoing-services-table">
-                                <!-- Linhas serão inseridas pelo JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="legend">
-                        <div class="legend-item"><span class="legend-dot dot-waiting"></span> Aguardando</div>
-                        <div class="legend-item"><span class="legend-dot dot-in-progress"></span> Em Andamento</div>
-                        <div class="legend-item"><span class="legend-dot dot-finished"></span> Finalizado</div>
-                    </div>
-                </div>
-
-                <!-- Seção 2: Serviços Concluídos -->
-                <div class="section-card completed-services">
-                    <div class="section-header">
-                        <i class="fa-solid fa-check-circle"></i>
-                        <span>SERVIÇOS CONCLUÍDOS</span>
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Placa</th>
-                                    <th>Tipo de Serviço</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="completed-services-table">
-                                <!-- Linhas serão inseridas pelo JavaScript -->
-                            </tbody>
-                        </table>
+    
+                    <!-- Seção 2: Serviços Concluídos -->
+                    <div class="section-card completed-services">
+                        <div class="section-header">
+                            <i class="fa-solid fa-check-circle"></i>
+                            <span>SERVIÇOS CONCLUÍDOS</span>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Placa</th>
+                                        <th>Tipo de Serviço</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="completed-services-table">
+                                    <!-- Linhas serão inseridas pelo JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>
