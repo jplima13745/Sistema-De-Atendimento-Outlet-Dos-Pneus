@@ -40,10 +40,12 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: var(--blue-dark);
-    color: var(--text-light);
+    background-color: #ffffff; /* Fundo branco */
+    color: var(--text-dark); /* Texto escuro para contraste */
     padding: 0.75rem 2rem;
     flex-shrink: 0;
+    border-top: 3px solid var(--grey-divider); /* Borda superior cinza claro */
+    border-bottom: 3px solid var(--grey-divider); /* Borda inferior cinza claro */
 }
 
 .header .logo {
@@ -66,7 +68,7 @@ html, body {
     font-size: 1rem;
     font-weight: 400;
     text-transform: capitalize;
-    color: rgba(255, 255, 255, 0.8); /* Branco com leve transparência */
+    color: var(--text-dark); /* Texto escuro para contraste */
 }
 
 .header .datetime i {

@@ -390,16 +390,20 @@ function showNextAd() {
             video.autoplay = true;
             video.muted = true; // Autoplay com som geralmente é bloqueado
             video.playsInline = true;
-            video.loop = true; // Garante que o vídeo continue se for curto
+            // O vídeo não deve ser em loop para que o evento 'onended' funcione corretamente.
             adElement = video;
+
+            // Quando o vídeo terminar, chama a função para esconder o anúncio.
+            video.onended = hideAdAndResume;
+
         } else { // 'image'
             const img = document.createElement('img'); // RF005
             img.src = ad.url;
             adElement = img;
+            // Para imagens, volta para a fila após o tempo definido em CYCLE_INTERVAL.
+            adDisplayTimeout = setTimeout(hideAdAndResume, CYCLE_INTERVAL);
         }
         adContainer.appendChild(adElement);
-        // Volta para a fila após o tempo fixo de 30 segundos
-        adDisplayTimeout = setTimeout(hideAdAndResume, CYCLE_INTERVAL);
     }, 400); // Tempo da transição em ms
 }
 

@@ -12,6 +12,7 @@ const emptyMessage = document.getElementById('media-list-empty-message');
 const dropArea = document.getElementById('drop-area');
 const fileNameDisplay = document.getElementById('file-name-display');
 const storageInfoDisplay = document.getElementById('storage-info-display');
+const progressBarContainer = document.getElementById('progress-bar-container');
 
 /**
  * Exibe uma mensagem para o usuário e a limpa após um tempo.
@@ -31,7 +32,13 @@ function showUserMessage(text, isError = false) {
  * @param {File} file - O arquivo selecionado.
  */
 function updateFileDisplay(file) {
-    fileNameDisplay.textContent = file ? `Arquivo selecionado: ${file.name}` : '';
+    if (!file) {
+        fileNameDisplay.textContent = '';
+    } else if (file.length === 1) {
+        fileNameDisplay.textContent = `Arquivo selecionado: ${file[0].name}`;
+    } else {
+        fileNameDisplay.textContent = `${file.length} arquivos selecionados.`;
+    }
     uploadMessage.textContent = ''; // Limpa mensagens anteriores
 }
 
@@ -41,43 +48,90 @@ function updateFileDisplay(file) {
  */
 async function handleFormSubmit(e) {
     e.preventDefault();
-    const file = fileInput.files[0];
+    const files = fileInput.files;
     const title = titleInput.value.trim();
 
-    if (!file) {
-        showUserMessage("Por favor, selecione um arquivo de mídia.", true);
+    if (files.length === 0) {
+        showUserMessage("Por favor, selecione um ou mais arquivos de mídia.", true);
         return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('title', title);
+    const uploadPromises = [];
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        // Para múltiplos arquivos, usamos o nome do arquivo como título.
+        // Se apenas um arquivo for enviado, usamos o título do input.
+        const fileTitle = files.length > 1 ? file.name.split('.').slice(0, -1).join('.') : title || file.name.split('.').slice(0, -1).join('.');
+        
+        // Criamos uma div para a barra de progresso de cada arquivo
+        const progressElement = document.createElement('div');
+        progressBarContainer.appendChild(progressElement);
 
-    showUserMessage("Enviando...");
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/media`, {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Falha no upload');
-        }
-
-        showUserMessage("Mídia adicionada com sucesso!");
-        form.reset();
-        updateFileDisplay(null);
-        loadInitialMedia(); // Recarrega a lista
-        updateStorageInfo(); // Atualiza o uso de espaço
-
-    } catch (error) {
-        console.error("Erro no upload:", error);
-        showUserMessage(`Erro no upload: ${error.message}`, true);
+        uploadPromises.push(uploadFileWithProgress(file, fileTitle, progressElement, i + 1, files.length));
     }
+
+    await Promise.all(uploadPromises);
+
+    showUserMessage("Todos os uploads foram concluídos com sucesso!");
+    form.reset();
+    updateFileDisplay(null);
+    loadInitialMedia();
+    updateStorageInfo();
+    
+    // Limpa as barras de progresso após um tempo
+    setTimeout(() => {
+        progressBarContainer.innerHTML = '';
+    }, 5000);
 }
 
+/**
+ * Faz o upload de um único arquivo com uma barra de progresso.
+ * @param {File} file - O arquivo para upload.
+ * @param {string} title - O título da mídia.
+ * @param {HTMLElement} progressElement - O elemento que conterá a barra de progresso.
+ * @param {number} fileNumber - O número do arquivo atual (ex: 1).
+ * @param {number} totalFiles - O número total de arquivos.
+ */
+function uploadFileWithProgress(file, title, progressElement, fileNumber, totalFiles) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const formData = new FormData();
+
+        formData.append('file', file);
+        formData.append('title', title);
+        formData.append('contentType', file.type);
+
+        xhr.open('POST', `${API_BASE_URL}/media`, true);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percentage = Math.round((event.loaded / event.total) * 100);
+                progressElement.innerHTML = `
+                    <p class="text-sm text-gray-600">Enviando ${fileNumber}/${totalFiles}: "${file.name}"</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                        <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${percentage}%"></div>
+                    </div>`;
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                progressElement.innerHTML = `<p class="text-sm text-green-600">✓ Enviado: "${file.name}"</p>`;
+                resolve(xhr.response);
+            } else {
+                progressElement.innerHTML = `<p class="text-sm text-red-600">✗ Erro no envio: "${file.name}"</p>`;
+                reject(new Error(xhr.statusText));
+            }
+        };
+
+        xhr.onerror = () => {
+            progressElement.innerHTML = `<p class="text-sm text-red-600">✗ Erro de rede ao enviar: "${file.name}"</p>`;
+            reject(new Error("Erro de rede"));
+        };
+
+        xhr.send(formData);
+    });
+}
 /**
  * Renderiza a lista de mídias na tela.
  * @param {Array} mediaItems - Array de documentos de mídia do Firestore.
@@ -104,7 +158,7 @@ function renderMediaList(mediaItems) {
                </div>`;
 
         return `
-            <li class="p-4 flex justify-between items-center hover:bg-gray-50 cursor-grab" data-id="${id}">
+            <li class="p-4 flex justify-between items-center hover:bg-gray-50 cursor-grab" data-id="${id}" data-url="${url}">
                 <div class="flex items-center flex-grow">
                     <div class="w-24 h-16 bg-gray-200 rounded-md flex items-center justify-center mr-4">${thumbnailHTML}</div>
                     <div>
@@ -139,13 +193,20 @@ async function handleMediaListClick(e) {
     const listItem = target.closest('li');
     if (!listItem) return;
 
-    const mediaId = listItem.dataset.id;
+    const mediaId = listItem.dataset.id; // ID do documento no Firestore
 
     // --- Lógica para o botão de excluir ---
     if (target.closest('button[title="Excluir"]')) {
         if (confirm("Tem certeza que deseja excluir esta mídia? Esta ação não pode ser desfeita.")) {
+            // A URL do arquivo está armazenada no atributo 'data-url' do item da lista.
+            const fileUrl = listItem.dataset.url;
+
             try {
-                const response = await fetch(`${API_BASE_URL}/media/${mediaId}`, { method: 'DELETE' });
+                const response = await fetch(`${API_BASE_URL}/media/${mediaId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: fileUrl }) // Envia a URL para a API
+                });
                 if (!response.ok) {
                     throw new Error('Falha ao excluir');
                 }
@@ -171,7 +232,10 @@ async function handleMediaListClick(e) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus })
             });
-            loadInitialMedia(); // Recarrega a lista para refletir a mudança
+            // Atualiza a UI diretamente sem recarregar a lista inteira
+            const statusElement = listItem.querySelector('.text-sm.text-gray-500');
+            const type = statusElement.textContent.split(' - ')[0]; // Mantém o tipo de mídia
+            statusElement.textContent = `${type} - ${newStatus}`;
             showUserMessage(`Status atualizado para '${newStatus}'.`);
         } catch (error) {
             console.error("Erro ao atualizar status:", error);
@@ -240,9 +304,7 @@ form.addEventListener('submit', handleFormSubmit);
 
 // Listener para seleção de arquivo (funciona para clique e drag-and-drop)
 fileInput.addEventListener('change', () => {
-    if (fileInput.files.length > 0) {
-        updateFileDisplay(fileInput.files[0]);
-    }
+    updateFileDisplay(fileInput.files.length > 0 ? fileInput.files : null);
 });
 
 // Listeners para feedback visual do Drag and Drop
