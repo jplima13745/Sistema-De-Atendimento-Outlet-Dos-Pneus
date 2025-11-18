@@ -37,20 +37,14 @@ const STATUS_ATTENDING = 'Em Atendimento';
 let serviceJobs = [];
 let alignmentQueue = [];
 let ads = []; // NOVO: Armazena a lista de anúncios
-
-// --- Estado do Auto-Scroll ---
-let scrollTimeout = null;
-let scrollInterval = null;
-const SCROLL_WAIT_AT_TOP = 30 * 1000; // 30 segundos
-const SCROLL_SPEED = 50; // Intervalo de atualização (mais rápido para suavidade)
-const SCROLL_STEP = 1; // Pixels por passo (menor para ser mais suave)
+const SCROLL_WAIT_AT_TOP = 20 * 1000; // NOVO: Tempo de espera da rolagem no topo (20 segundos)
 
 // --- NOVO: Estado do Ciclo de Anúncios (RF005) ---
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev'; // URL da API de Marketing
 let adCycleTimeout = null; 
 let adDisplayTimeout = null; // NOVO: Timer para a duração da exibição do anúncio
 let currentAdIndex = 0;
-const CYCLE_INTERVAL = 30 * 1000; // 30 segundos para cada etapa (fila ou anúncio)
+const CYCLE_INTERVAL = 45 * 1000; // 30 segundos para cada etapa (fila ou anúncio)
 const readyAlert = document.getElementById('ready-alert');
 
 
@@ -237,17 +231,97 @@ function renderReadyList(items) {
 }
 
 /**
- * NOVO: Gerencia a rolagem automática da lista de serviços.
+ * NOVO: Gerencia a rolagem automática dos contêineres.
  */
-function handleAutoScroll() {
-    // A rolagem automática foi desativada para o novo layout,
-    // pois cada tabela tem sua própria rolagem interna se necessário.
-}
+const ScrollManager = {
+    instances: [],
+    isPaused: false,
 
-// =========================================================================
-// NOVO: LÓGICA DE EXIBIÇÃO DE ANÚNCIOS (RF005, RF006, RF010)
-// =========================================================================
+    /**
+     * Inicia o auto-scroll para um elemento.
+     * @param {HTMLElement} element - O elemento do contêiner a ser rolado.
+     */
+    init(element) {
+        const instance = {
+            element: element,
+            timeoutId: null,
+            isScrolling: false,
+        };
 
+        const startCycle = () => {
+            // Cancela qualquer ciclo anterior para evitar duplicação
+            if (instance.timeoutId) clearTimeout(instance.timeoutId);
+
+            // Só inicia se não estiver pausado e se houver conteúdo para rolar
+            if (this.isPaused || element.scrollHeight <= element.clientHeight) {
+                instance.isScrolling = false;
+                return;
+            }
+            
+            instance.isScrolling = true;
+            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP); // Usa a nova constante de 20s
+        };
+
+        const scrollDown = () => {
+            if (this.isPaused) return;
+            const targetY = element.scrollHeight - element.clientHeight;
+            this.smoothScroll(element, targetY, 2000, scrollUp); // Rola para baixo em 2s
+        };
+
+        const scrollUp = () => {
+            if (this.isPaused) return;
+            // Pequena pausa no final antes de subir
+            setTimeout(() => {
+                this.smoothScroll(element, 0, 2000, startCycle); // Rola para cima em 2s e reinicia o ciclo
+            }, 500);
+        };
+
+        instance.start = startCycle;
+        this.instances.push(instance);
+        instance.start();
+    },
+
+    /**
+     * Rola suavemente um elemento para uma posição.
+     * @param {HTMLElement} el - O elemento.
+     * @param {number} to - A posição de destino.
+     * @param {number} duration - Duração da animação.
+     * @param {Function} callback - Função a ser chamada no final.
+     */
+    smoothScroll(el, to, duration, callback) {
+        const start = el.scrollTop;
+        const change = to - start;
+        const startTime = performance.now();
+
+        const animateScroll = (currentTime) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            el.scrollTop = start + change * (progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress);
+
+            if (elapsed < duration) {
+                requestAnimationFrame(animateScroll);
+            } else {
+                callback && callback();
+            }
+        };
+        requestAnimationFrame(animateScroll);
+    },
+
+    // Pausa todas as instâncias de rolagem
+    pauseAll() {
+        this.isPaused = true;
+        this.instances.forEach(inst => clearTimeout(inst.timeoutId));
+    },
+
+    // Retoma todas as instâncias de rolagem
+    resumeAll() {
+        this.isPaused = false;
+        this.instances.forEach(inst => {
+            if (inst.isScrolling) inst.start();
+        });
+    }
+};
+ 
 /**
  * Busca a lista de anúncios ativos da API de marketing.
  */
@@ -300,8 +374,8 @@ function showNextAd() {
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
     // Para a rolagem da fila e esconde o container
-    if (scrollInterval) clearInterval(scrollInterval);
-    if (adDisplayTimeout) clearTimeout(adDisplayTimeout); // Limpa timer anterior
+    ScrollManager.pauseAll(); // Pausa a rolagem automática
+    if (adDisplayTimeout) clearTimeout(adDisplayTimeout);
     queueContainer.classList.add('fade-hidden'); // Inicia o fade-out da fila
 
     setTimeout(() => { // Aguarda a transição para trocar os conteúdos
@@ -337,12 +411,24 @@ function hideAdAndResume() {
     setTimeout(() => {
         adContainer.classList.add('hidden'); // Esconde o container do anúncio
         queueContainer.classList.remove('hidden', 'fade-hidden');
-        // handleAutoScroll(); // Rolagem não é mais necessária no novo layout
+        ScrollManager.resumeAll(); // Retoma a rolagem automática
         startAdCycle(); // Reagenda o próximo anúncio
     }, 400); // Tempo da transição em ms
 }
 
 // --- Inicialização ---
+let isFirstRender = true;
+
 document.addEventListener('DOMContentLoaded', () => {
     waitForFirebaseAuth(); // Inicia diretamente a verificação do Firebase.
+
+    // A inicialização da rolagem será feita após a primeira renderização dos dados
+    const originalRender = renderDisplay;
+    renderDisplay = (...args) => {
+        originalRender.apply(this, args);
+        if (isFirstRender) {
+            document.querySelectorAll('.table-container, .promotions-list').forEach(el => ScrollManager.init(el));
+            isFirstRender = false;
+        }
+    };
 });

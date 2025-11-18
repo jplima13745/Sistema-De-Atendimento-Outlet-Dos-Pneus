@@ -77,21 +77,28 @@ html, body {
 .main-body {
     display: flex;
     flex-grow: 1;
-    padding: 1.5rem;
+    padding: 1.5rem 0; /* Remove o padding lateral para o conteúdo ir até as bordas */
     gap: 1.5rem;
     overflow: hidden;
 }
 
 .services-column {
-    flex: 0 0 70%;
+    flex: 0 0 75%; /* Aumenta o espaço para comportar as duas colunas de serviço */
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
     overflow: hidden;
 }
 
+.services-container {
+    flex-grow: 1;
+    display: flex;
+    gap: 1.5rem;
+    overflow: hidden;
+}
+
 .promotions-column {
-    flex: 0 0 30%;
+    flex: 0 0 25%; /* Diminui o espaço para dar lugar à nova organização */
     overflow: hidden;
 }
 
@@ -121,8 +128,13 @@ html, body {
 }
 
 /* Coluna da Esquerda (Serviços) */
-.ongoing-services { flex-grow: 2; } /* Ocupa mais espaço */
-.completed-services { flex-grow: 1; } /* Ocupa menos espaço */
+.ongoing-services {
+    flex: 0 0 65%; /* Ocupa 65% do espaço no services-container */
+}
+
+.completed-services {
+    flex: 0 0 35%; /* Ocupa 35% do espaço no services-container */
+}
 
 .ongoing-services .section-header { background-color: var(--blue-dark); }
 .completed-services .section-header { background-color: var(--green); }
@@ -309,7 +321,7 @@ tbody tr:last-child td {
 #ad-container img, #ad-container video {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: contain; /* Garante que a mídia inteira seja visível, sem cortes */
 }
 
 #queue-container, #ad-container {
