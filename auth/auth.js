@@ -87,14 +87,14 @@ async function handleLogin(e) {
         // RF003: Redirecionamento baseado no perfil
         if (ALLOWED_OPERATIONAL_PROFILES.includes(user.role)) {
             await logAccessAttempt(user.id, user.role, true, 'operacional_system');
-            window.location.href = '../Operacional_system/index.html'; // CORREÇÃO: Caminho relativo
+            window.location.href = '../Operacional_system/operacional.html'; // CORREÇÃO: Caminho relativo
         } else if (ALLOWED_MARKETING_PROFILES.includes(user.role)) { // CORREÇÃO: Verifica primeiro o perfil de marketing
             await logAccessAttempt(user.id, user.role, true, 'marketing_interface');
-            window.location.href = '../marketing_interface/index.html'; // CORREÇÃO: Caminho relativo
+            window.location.href = '../marketing_interface/marketing.html'; // CORREÇÃO: Caminho relativo
         } else if (ALLOWED_CLIENT_PROFILES.includes(user.role)) {
             await logAccessAttempt(user.id, user.role, true, 'Cliente_queue');
             await signInAnonymously(auth); // Garante permissão de leitura para a tela do cliente
-            window.location.href = '../Cliente_queue/index.html'; // CORREÇÃO: Caminho relativo
+            window.location.href = '../Cliente_queue/cliente.html'; // CORREÇÃO: Caminho relativo
         } else {
             // RF002: Bloqueia perfis não autorizados
             await logAccessAttempt(user.id, user.role, false, 'any');
