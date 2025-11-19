@@ -39,12 +39,12 @@ let alignmentQueue = [];
 let ads = []; // NOVO: Armazena a lista de anúncios
 const SCROLL_WAIT_AT_TOP = 20 * 1000; // NOVO: Tempo de espera da rolagem no topo (20 segundos)
 
-// --- NOVO: Estado do Ciclo de Anúncios (RF005) ---
+// --- Estado do Ciclo de Anúncios (RF005) ---
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev'; // URL da API de Marketing
 let adCycleTimeout = null; 
-let adDisplayTimeout = null; // NOVO: Timer para a duração da exibição do anúncio
+let globalImageDuration = 10; // Duração padrão em segundos para imagens, caso a API falhe.
 let currentAdIndex = 0;
-const CYCLE_INTERVAL = 5 * 1000; // 30 segundos para cada etapa (anúncio)
+const QUEUE_DISPLAY_INTERVAL = 2 * 1000; // 2 minutos de exibição da fila entre anúncios.
 const readyAlert = document.getElementById('ready-alert');
 
 
@@ -82,6 +82,7 @@ function initializeSystem() {
     setupClock();
     setupRealtimeListeners();
     fetchAds(); // Busca os anúncios da API
+    fetchGlobalConfig(); // Busca a configuração de duração padrão
     startAdCycle(); // Inicia o ciclo de exibição de anúncios
 }
 
@@ -323,6 +324,24 @@ const ScrollManager = {
 };
  
 /**
+ * NOVO: Busca a configuração de duração global para imagens da API.
+ */
+async function fetchGlobalConfig() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/config/duration`);
+        if (response.ok) {
+            const config = await response.json();
+            if (config && config.value) {
+                globalImageDuration = parseInt(config.value, 10);
+                console.log(`Duração global para imagens definida para: ${globalImageDuration}s`);
+            }
+        }
+    } catch (error) {
+        console.error("Erro ao buscar configuração de duração global. Usando padrão:", error);
+    }
+}
+
+/**
  * Busca a lista de anúncios ativos da API de marketing.
  */
 async function fetchAds() {
@@ -353,9 +372,9 @@ function startAdCycle() {
     if (adCycleTimeout) {
         clearTimeout(adCycleTimeout);
     }
-    // Agenda a próxima exibição de anúncio
-    adCycleTimeout = setTimeout(showNextAd, CYCLE_INTERVAL);
-    console.log(`Ciclo iniciado. Próxima troca em ${CYCLE_INTERVAL / 1000} segundos.`);
+    // ATUALIZADO: Agenda a exibição do próximo anúncio para depois do intervalo definido.
+    adCycleTimeout = setTimeout(showNextAd, QUEUE_DISPLAY_INTERVAL);
+    console.log(`Fila de clientes em exibição. Próximo anúncio em ${QUEUE_DISPLAY_INTERVAL / 1000 / 60} minuto(s).`);
 }
 
 /**
@@ -365,7 +384,8 @@ function showNextAd() {
     // RF010: Se não houver anúncios, simplesmente reagenda e continua exibindo a fila.
     if (ads.length === 0) {
         console.warn("Nenhum anúncio para exibir. Reagendando ciclo.");
-        startAdCycle();
+        // Tenta novamente após um intervalo, caso os anúncios sejam cadastrados depois.
+        adCycleTimeout = setTimeout(startAdCycle, 30000);
         return;
     }
 
@@ -375,7 +395,6 @@ function showNextAd() {
 
     // Para a rolagem da fila e esconde o container
     ScrollManager.pauseAll(); // Pausa a rolagem automática
-    if (adDisplayTimeout) clearTimeout(adDisplayTimeout);
     queueContainer.classList.add('fade-hidden'); // Inicia o fade-out da fila
 
     setTimeout(() => { // Aguarda a transição para trocar os conteúdos
@@ -394,18 +413,30 @@ function showNextAd() {
             video.playsInline = true;
             // O vídeo não deve ser em loop para que o evento 'onended' funcione corretamente.
             adElement = video;
-
+            
             // Quando o vídeo terminar, chama a função para esconder o anúncio.
             video.onended = hideAdAndResume;
+
+            // Adiciona o elemento ao DOM antes de tentar reproduzir
+            adContainer.appendChild(adElement);
+
+            // VERSÃO FINAL: Tenta reproduzir o vídeo com som.
+            // Para que isso funcione, o navegador DEVE ter permissão para reproduzir som
+            // automaticamente para este site. Caso contrário, o vídeo não tocará.
+            video.play().catch(error => console.error("Falha ao reproduzir vídeo. Verifique as permissões de som do navegador.", error));
 
         } else { // 'image'
             const img = document.createElement('img'); // RF005
             img.src = ad.url;
             adElement = img;
-            // Para imagens, volta para a fila após o tempo definido em CYCLE_INTERVAL.
-            adDisplayTimeout = setTimeout(hideAdAndResume, CYCLE_INTERVAL);
+
+            // ATUALIZADO: Usa a duração específica da imagem ou a global.
+            const displayTime = (ad.duration || globalImageDuration) * 1000;
+            console.log(`Exibindo imagem por ${displayTime / 1000}s`);
+            adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
+            adContainer.appendChild(adElement);
         }
-        adContainer.appendChild(adElement);
+
     }, 400); // Tempo da transição em ms
 }
 
@@ -417,7 +448,7 @@ function hideAdAndResume() {
     setTimeout(() => {
         adContainer.classList.add('hidden'); // Esconde o container do anúncio
         queueContainer.classList.remove('hidden', 'fade-hidden');
-        ScrollManager.resumeAll(); // Retoma a rolagem automática
+        ScrollManager.resumeAll(); // Retoma a rolagem da fila
         startAdCycle(); // Reagenda o próximo anúncio
     }, 400); // Tempo da transição em ms
 }
