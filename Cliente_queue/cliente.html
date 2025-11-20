@@ -16,7 +16,7 @@
         <!-- 1. Cabeçalho -->
         <header class="header">
             <div class="logo">
-                <span>Outlet</span><span>dos Pneus</span>
+                <span>Outlet </span><span>dos Pneus</span>
             </div>
             <div class="datetime">
                 <i class="fa-regular fa-calendar-days"></i>
@@ -28,56 +28,28 @@
         <main class="main-body">
             <!-- Coluna da Esquerda (Serviços) -->
             <section class="services-column">
-                <div class="services-container">
-                    <!-- Seção 1: Serviços em Andamento -->
-                    <div class="section-card ongoing-services">
-                        <div class="section-header">
-                            <i class="fa-solid fa-wrench"></i>
-                            <span>SERVIÇOS EM ANDAMENTO</span>
-                        </div>
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Posição</th>
-                                        <th>Placa</th>
-                                        <th>Tipo de Serviço</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ongoing-services-table">
-                                    <!-- Linhas serão inseridas pelo JavaScript -->
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="legend">
-                            <div class="legend-item"><span class="legend-dot dot-waiting"></span> Aguardando</div>
-                            <div class="legend-item"><span class="legend-dot dot-in-progress"></span> Em Andamento</div>
-                            <div class="legend-item"><span class="legend-dot dot-finished"></span> Finalizado</div>
-                        </div>
+                <!-- Seção 1: Serviços em Andamento -->
+                <div class="section-card ongoing-services">
+                    <div class="section-header">
+                        <i class="fa-solid fa-wrench"></i>
+                        <span>SERVIÇOS EM ANDAMENTO</span>
                     </div>
-    
-                    <!-- Seção 2: Serviços Concluídos -->
-                    <div class="section-card completed-services">
-                        <div class="section-header">
-                            <i class="fa-solid fa-check-circle"></i>
-                            <span>SERVIÇOS CONCLUÍDOS</span>
-                        </div>
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Placa</th>
-                                        <th>Tipo de Serviço</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="completed-services-table">
-                                    <!-- Linhas serão inseridas pelo JavaScript -->
-                                </tbody>
-                            </table>
-                        </div>
+                    <!-- O JavaScript irá inserir os cards de serviço aqui -->
+                    <div id="ongoing-services-cards" class="cards-container">
+                        <!-- Exemplo de card (será gerado dinamicamente) -->
                     </div>
+                </div>
+            </section>
+
+            <!-- Seção 2: Serviços Concluídos (agora como uma coluna principal) -->
+            <section class="section-card completed-services">
+                <div class="section-header">
+                    <i class="fa-solid fa-check-circle"></i>
+                    <span>SERVIÇOS CONCLUÍDOS</span>
+                </div>
+                <!-- O JavaScript irá inserir os cards de veículos prontos aqui -->
+                <div id="completed-services-cards" class="cards-container-completed">
+                    <!-- Exemplo de card concluído (será gerado dinamicamente) -->
                 </div>
             </section>
 
