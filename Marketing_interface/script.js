@@ -25,6 +25,10 @@ const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
 // --- Constantes (NOVO) ---
 const APP_ID = 'local-autocenter-app';
 const PROMOTIONS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/promotions`;
+const SERVICE_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/serviceJobs`;
+const ALIGNMENT_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/alignmentQueue`;
+const HIDDEN_ITEMS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/hiddenItems`;
+
 
 // --- Elementos da UI (Mídia) ---
 const form = document.getElementById('marketing-form');
@@ -73,8 +77,16 @@ const promoEditIconInput = document.getElementById('promo-edit-icon');
 let currentEditingPromoId = null;
 
 // --- Elementos da UI (Abas - NOVO) ---
-const tabs = { media: document.getElementById('tab-media'), promotions: document.getElementById('tab-promotions') };
-const tabContents = { media: document.getElementById('tab-content-media'), promotions: document.getElementById('tab-content-promotions') };
+const tabs = { 
+    media: document.getElementById('tab-media'), 
+    promotions: document.getElementById('tab-promotions'),
+    queue: document.getElementById('tab-queue-mirror') // NOVO: Aba da Fila
+};
+const tabContents = { 
+    media: document.getElementById('tab-content-media'), 
+    promotions: document.getElementById('tab-content-promotions'),
+    queue: document.getElementById('tab-content-queue-mirror') // NOVO: Conteúdo da Fila
+};
 
 /**
  * Exibe uma mensagem para o usuário e a limpa após um tempo.
@@ -512,6 +524,171 @@ function initPromotionsSortable() {
             }
         },
     });
+}
+
+/**
+ * NOVO: Lógica de gerenciamento da Fila Espelho
+ */
+
+let hiddenItems = new Set();
+
+function listenToHiddenItems() {
+    const q = query(collection(db, HIDDEN_ITEMS_COLLECTION_PATH));
+    onSnapshot(q, (snapshot) => {
+        hiddenItems = new Set(snapshot.docs.map(doc => doc.id));
+        // Re-renderiza a lista para atualizar os ícones de olho
+        listenToServiceQueues(); 
+    });
+}
+
+
+function listenToServiceQueues() {
+    // Listener para Serviços Gerais (serviceJobs)
+    const serviceQuery = query(collection(db, SERVICE_COLLECTION_PATH));
+    onSnapshot(serviceQuery, (serviceSnapshot) => {
+        const allServiceJobs = serviceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Listener para Alinhamento (alignmentQueue)
+        const alignmentQuery = query(collection(db, ALIGNMENT_COLLECTION_PATH));
+        onSnapshot(alignmentQuery, (alignmentSnapshot) => {
+            const allAlignmentJobs = alignmentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // REPLICA A LÓGICA DE PROCESSAMENTO DO `cliente_queue`
+            const vehicleData = new Map();
+            const getVehicle = (plate) => {
+                if (!vehicleData.has(plate)) {
+                    // Inicializa com um ID temporário ou nulo
+                    vehicleData.set(plate, { id: null, plate, model: 'Veículo', services: {}, status: 'Pendente' });
+                }
+                return vehicleData.get(plate);
+            };
+
+            // Processa serviceJobs
+            allServiceJobs.forEach(job => {
+                // CORREÇÃO CRÍTICA 1: Ignora jobs finalizadas/prontas, replicando a lógica do cliente.
+                if (job.status === 'Finalizado' || job.status === 'Pago' || job.status === 'Pronto para Pagamento') {
+                     return; 
+                }
+
+                const vehicle = getVehicle(job.licensePlate);
+                // CORREÇÃO CRÍTICA 2: Define o ID da job principal (ServiceJob) para ocultar/mostrar.
+                vehicle.id = job.id; 
+                vehicle.model = job.carModel || vehicle.model;
+                vehicle.status = job.status;
+
+                // CORREÇÃO: Replica a lógica de verificação de serviços concluídos do cliente_queue
+                const jobType = job.type || job.serviceType || '';
+                if (jobType.includes('Serviço Geral') || job.statusGS) {
+                    const isCompleted = job.statusGS === 'Concluído' || 
+                                       job.statusGS === 'Serviço Geral Concluído' ||
+                                       job.status === 'Serviço Geral Concluído';
+                    vehicle.services.general = { 
+                        name: 'Mecânico', 
+                        completed: isCompleted
+                    };
+                }
+                if (jobType.includes('Pneus') || job.statusTS) {
+                    const isCompleted = job.statusTS === 'Concluído' || 
+                                       job.statusTS === 'Serviço Pneus Concluído';
+                    vehicle.services.tires = { 
+                        name: 'Borracheiro', 
+                        completed: isCompleted
+                    };
+                }
+            });
+
+            // Processa alignmentQueue
+            allAlignmentJobs.forEach(car => {
+                // CORREÇÃO CRÍTICA 1: Ignora alinhamentos finalizados/prontos, replicando a lógica do cliente.
+                if (car.status === 'Finalizado' || car.status === 'Pronto para Pagamento') {
+                     return;
+                }
+
+                const vehicle = getVehicle(car.licensePlate);
+                vehicle.model = car.carModel || vehicle.model;
+                vehicle.status = car.status;
+
+                // CORREÇÃO CRÍTICA 2: Se o veículo ainda não tem ID (só está no alinhamento), usa o ID do alinhamento.
+                if (!vehicle.id) {
+                    vehicle.id = car.id;
+                }
+                
+                // CORREÇÃO: Replica a lógica de conclusão de alinhamento do cliente_queue
+                const isAlignmentCompleted = car.status === 'Pronto para Pagamento' || 
+                                            car.status === 'Finalizado';
+                vehicle.services.alignment = { 
+                    name: 'Alinhamento', 
+                    completed: isAlignmentCompleted 
+                };
+            });
+
+            // Filtra apenas os veículos que têm serviços incompletos, exatamente como na tela do cliente
+            const displayItems = Array.from(vehicleData.values()).filter(vehicle => {
+                const serviceStatuses = Object.values(vehicle.services);
+                // O veículo deve ter um ID e pelo menos um serviço incompleto para ser exibido.
+                // Se um veículo tem serviços, mas todos estão 'completed: true', ele também não entra.
+                const hasIncomplete = serviceStatuses.length > 0 && serviceStatuses.some(service => !service.completed);
+
+                return vehicle.id !== null && hasIncomplete;
+            });
+
+            // Ordena por placa para consistência
+            displayItems.sort((a, b) => a.plate.localeCompare(b.plate));
+
+            renderQueueMirror(displayItems);
+        });
+    });
+}
+
+function renderQueueMirror(serviceJobs, alignmentQueue) {
+    const container = document.getElementById('queue-mirror-list');
+    if (!container) return;
+    const itemsToRender = Array.isArray(serviceJobs) ? serviceJobs : [];
+    if (itemsToRender.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-8">Nenhum veículo em atendimento no momento.</p>`;
+        return;
+    }
+    container.innerHTML = itemsToRender.map(item => {
+        const isHidden = hiddenItems.has(item.id);
+        const icon = isHidden 
+            ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>`
+            : `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>`;
+
+        return `
+            <li class="p-4 flex justify-between items-center hover:bg-gray-50">
+                <div>
+                    <p class="text-xl font-bold text-gray-800">${item.model}</p>
+                    <p class="text-md text-gray-600">${item.plate} - <span class="font-medium">${item.status}</span></p>
+                </div>
+                <button title="${isHidden ? 'Mostrar na fila' : 'Ocultar da fila'}" class="toggle-visibility-btn p-2 rounded-full ${isHidden ? 'text-gray-400 hover:bg-gray-200' : 'text-blue-500 hover:bg-blue-100'}" data-id="${item.id}" data-is-hidden="${isHidden}">
+                    ${icon}
+                </button>
+            </li>
+        `;
+    }).join('');
+}
+
+async function handleQueueMirrorClick(e) {
+    const toggleButton = e.target.closest('.toggle-visibility-btn');
+    if (!toggleButton) return;
+
+    const itemId = toggleButton.dataset.id;
+    const isCurrentlyHidden = toggleButton.dataset.isHidden === 'true';
+    const docRef = doc(db, HIDDEN_ITEMS_COLLECTION_PATH, itemId);
+
+    try {
+        if (isCurrentlyHidden) {
+            // Se está oculto, vamos mostrar (deletar o documento)
+            await deleteDoc(docRef);
+        } else {
+            // Se está visível, vamos ocultar (criar o documento)
+            await setDoc(docRef, { hiddenAt: new Date() });
+        }
+        // O listener `listenToHiddenItems` vai re-renderizar a lista automaticamente
+    } catch (error) {
+        console.error("Erro ao alterar visibilidade do item:", error);
+        alert("Ocorreu um erro. Tente novamente.");
+    }
 }
 
 /**
@@ -975,6 +1152,11 @@ function initializeSystem() {
         renderPromotionsList(promos);
         initPromotionsSortable();
     });
+
+    // NOVO: Inicialização da aba da Fila Espelho
+    listenToHiddenItems();
+    const queueMirrorList = document.getElementById('queue-mirror-list');
+    if (queueMirrorList) queueMirrorList.addEventListener('click', handleQueueMirrorClick);
 
     // Configuração das abas
     setupTabs();
