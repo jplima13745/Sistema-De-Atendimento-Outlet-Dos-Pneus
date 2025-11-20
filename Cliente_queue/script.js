@@ -23,6 +23,7 @@ const CLIENT_ROLE = 'cliente';
 const SERVICE_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/serviceJobs`;
 const ALIGNMENT_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/alignmentQueue`;
 const PROMOTIONS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/promotions`;
+const HIDDEN_ITEMS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/hiddenItems`; // NOVO
 
 // Status do Sistema Operacional - CORRIGIDO
 const STATUS_PENDING = 'Pendente';
@@ -40,6 +41,7 @@ const STATUS_ALIGNMENT_FINISHED = 'Finalizado';
 let serviceJobs = [];
 let alignmentQueue = [];
 let ads = [];
+let hiddenItemIds = new Set(); // NOVO: Armazena IDs dos itens ocultos
 const SCROLL_WAIT_AT_TOP = 10 * 1000;
 
 // --- Estado do Ciclo de Anúncios ---
@@ -103,6 +105,16 @@ function setupClock() {
  * CORRIGIDO: Configura os listeners do Firestore
  */
 function setupRealtimeListeners() {
+    // NOVO: Listener para itens ocultos
+    const hiddenItemsQuery = query(collection(db, HIDDEN_ITEMS_COLLECTION_PATH));
+    onSnapshot(hiddenItemsQuery, (snapshot) => {
+        hiddenItemIds = new Set(snapshot.docs.map(doc => doc.id));
+        console.log(`👁️ Itens ocultos atualizados: ${hiddenItemIds.size} item(s)`);
+        // Força uma nova renderização para aplicar o filtro
+        renderDisplay();
+    });
+
+
     // CORRIGIDO: Incluindo mais status relevantes e sem usar 'in' com mais de 10 itens
     const serviceQuery = query(
         collection(db, SERVICE_COLLECTION_PATH)
@@ -181,7 +193,7 @@ function setupRealtimeListeners() {
  */
 function renderDisplay() {
     console.log("🎨 === INICIANDO RENDERIZAÇÃO ===");
-    const vehicleData = new Map();
+    let vehicleData = new Map();
     const readyItems = [];
 
     const getVehicle = (plate) => {
@@ -281,6 +293,13 @@ function renderDisplay() {
         return hasIncomplete;
     });
 
+    // NOVO: Filtra os itens que estão na lista de ocultos
+    const finalDisplayItems = displayItems.filter(item => {
+        const isHidden = hiddenItemIds.has(item.id);
+        if (isHidden) console.log(`👁️ Ocultando item: ${item.plate} (ID: ${item.id})`);
+        return !isHidden;
+    });
+
     // Ordena
     displayItems.sort((a, b) => a.priority - b.priority);
 
@@ -288,8 +307,8 @@ function renderDisplay() {
     console.log("🎨 === FIM DA RENDERIZAÇÃO ===\n");
 
     // Renderiza
-    renderServiceList(displayItems);
-    renderReadyList(readyItems);
+    renderServiceList(finalDisplayItems); // Usa a lista final filtrada
+    renderReadyList(readyItems.filter(item => !hiddenItemIds.has(item.id))); // Filtra também os prontos
 }
 
 /**
@@ -330,10 +349,11 @@ function renderServiceList(items) {
  * Renderiza a lista de serviços concluídos
  */
 function renderReadyList(items) {
-    const cardsContainer = document.getElementById('completed-services-cards');
+    const cardsContainer = document.getElementById('completed-services-cards');    
     cardsContainer.innerHTML = items.map(item => `
         <div class="completed-card">
             <div class="car-model">${item.model || 'Veículo'}</div>
+
             <div class="car-plate">${item.plate}</div>
         </div>
     `).join('');
@@ -561,7 +581,7 @@ function showNextAd() {
             video.muted = false;
             video.playsInline = true;
             adElement = video;
-
+            
             video.onended = hideAdAndResume;
             adContainer.appendChild(adElement);
             video.play().catch(error => console.error("❌ Falha ao reproduzir vídeo:", error));

@@ -23,6 +23,7 @@
                 <nav class="-mb-px flex space-x-8" aria-label="Tabs">
                     <button id="tab-media" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-blue-500 text-blue-600">Gerenciar Mídia</button>
                     <button id="tab-promotions" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Gerenciar Promoções</button>
+                    <button id="tab-queue-mirror" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Visualização da Fila</button>
                 </nav>
             </div>
         </div>
@@ -152,6 +153,19 @@
                 </div>
             </div>
         </div>
+
+        <!-- NOVO: Conteúdo da Aba de Visualização da Fila -->
+        <div id="tab-content-queue-mirror" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-0">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">Fila de Atendimento em Tempo Real</h2>
+                <p class="text-sm text-gray-600 mb-6">Clique no ícone de olho para ocultar ou mostrar um veículo na tela do cliente. A atualização é instantânea.</p>
+                <ul id="queue-mirror-list" class="divide-y divide-gray-200">
+                    <!-- A lista de serviços será renderizada aqui pelo JavaScript -->
+                    <p class="text-gray-500 p-8 text-center italic">Carregando fila de atendimento...</p>
+                </ul>
+            </div>
+        </div>
+
 
     </div>
 
