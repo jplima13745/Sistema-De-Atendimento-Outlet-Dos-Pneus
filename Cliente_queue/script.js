@@ -38,7 +38,7 @@ const STATUS_ATTENDING = 'Em Atendimento';
 let serviceJobs = [];
 let alignmentQueue = [];
 let ads = []; // NOVO: Armazena a lista de anúncios
-const SCROLL_WAIT_AT_TOP = 20 * 1000; // NOVO: Tempo de espera da rolagem no topo (20 segundos)
+const SCROLL_WAIT_AT_TOP = 15 * 1000; // ATUALIZADO: Tempo de espera da rolagem no topo (15 segundos)
 
 // --- Estado do Ciclo de Anúncios (RF005) ---
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev'; // URL da API de Marketing
@@ -157,58 +157,66 @@ function setupRealtimeListeners() {
  * Orquestra a renderização da tela, unindo e ordenando os dados.
  */
 function renderDisplay() {
-    // 1. Unifica e processa os dados para exibição, tratando duplicidades
-    const combinedItems = new Map();
+    const vehicleData = new Map();
     const readyItems = [];
 
-    // Processa carros da fila de alinhamento
-    alignmentQueue.forEach(car => {
-        if (car.status === STATUS_READY) {
-            readyItems.push({ plate: car.licensePlate, client: car.clientName || 'N/A', service: 'Alinhamento' });
-            return;
+    const getVehicle = (plate) => {
+        if (!vehicleData.has(plate)) {
+            // Inicializa com todos os serviços como 'não existentes'
+            vehicleData.set(plate, { plate, model: 'Veículo', services: {}, priority: 99 });
         }
+        return vehicleData.get(plate);
+    };
 
-        let priority = 99;
-        let statusText = "Na fila";
-        if (car.status === STATUS_ATTENDING) { priority = 1; statusText = "Alinhando"; }
-        else if (car.status === STATUS_WAITING) { priority = 2; statusText = "Aguardando Alinhamento"; }
-        else if (car.status === STATUS_WAITING_GS) { priority = 3; statusText = "Aguardando Serviço Geral"; }
-
-        combinedItems.set(car.licensePlate, {
-            plate: car.licensePlate,
-            client: car.clientName || 'N/A',
-            service: 'Alinhamento',
-            status: statusText,
-            priority,
-            statusClass: car.status === STATUS_ATTENDING ? 'in-progress' : 'waiting'
-        });
-    });
-
-    // Processa carros da fila de serviços gerais
+    // 1. Processa fila de SERVIÇOS GERAIS (Mecânico e Borracharia)
     serviceJobs.forEach(job => {
         if (job.status === STATUS_READY) {
-            readyItems.push({ plate: job.licensePlate, client: job.clientName || 'N/A', service: 'Serviço Geral' });
+            readyItems.push({ plate: job.licensePlate, model: job.carModel || 'Veículo' });
             return;
         }
 
-        // Se o carro já está na lista (veio do alinhamento), não o substitua,
-        // pois o status de alinhamento tem prioridade de exibição.
-        if (job.status === STATUS_PENDING && !combinedItems.has(job.licensePlate)) {
-            const serviceText = (job.statusGS === 'Pendente' && job.statusTS === 'Pendente')
-                ? "Serviço Geral e Pneus"
-                : (job.statusGS === 'Pendente' ? "Serviço Geral" : "Serviço de Pneus");
-            
-            combinedItems.set(job.licensePlate, { plate: job.licensePlate, client: job.clientName || 'N/A', service: serviceText, status: 'Em Andamento', priority: 5, statusClass: 'in-progress' });
+        // Lógica Restaurada e Corrigida: Processa apenas os serviços que estão efetivamente pendentes
+        // para não exibir carros já finalizados há tempos.
+        if (job.status === STATUS_PENDING) {
+            const vehicle = getVehicle(job.licensePlate);
+            vehicle.model = job.carModel || vehicle.model;
+            if (5 < vehicle.priority) vehicle.priority = 5;
+
+            if (job.serviceType && job.serviceType.includes('Serviço Geral')) {
+                vehicle.services.general = { name: 'Mecânico', completed: job.statusGS !== 'Pendente' };
+            }
+
+            if (job.serviceType && job.serviceType.includes('Serviço de Pneus')) {
+                vehicle.services.tires = { name: 'Borracheiro', completed: job.statusTS !== 'Pendente' };
+            }
         }
+    });
+
+    // 2. Processa fila de ALINHAMENTO
+    alignmentQueue.forEach(car => {
+        if (car.status === STATUS_READY) {
+            // Evita adicionar duplicados se já veio do serviceJobs
+            if (!readyItems.some(item => item.plate === car.licensePlate)) {
+                readyItems.push({ plate: car.licensePlate, model: car.carModel || 'Veículo' });
+            }
+            return;
+        }
+        const vehicle = getVehicle(car.licensePlate);
+        vehicle.model = car.carModel || vehicle.model;
+        let priority = car.status === STATUS_ATTENDING ? 1 : (car.status === STATUS_WAITING ? 2 : 3);
+        if (priority < vehicle.priority) vehicle.priority = priority;
+
+        // Adiciona o serviço de Alinhamento. A bolinha só será preenchida quando o carro sair da fila de alinhamento.
+        vehicle.services.alignment = { name: 'Alinhamento', completed: false };
     });
 
     // Converte o Map para um array
-    const displayItems = Array.from(combinedItems.values());
+    const displayItems = Array.from(vehicleData.values());
 
-    // 2. Ordena a fila principal (RF002)
+    // 3. Ordena a fila principal
     displayItems.sort((a, b) => a.priority - b.priority);
 
-    // 3. Renderiza as listas
+    // 4. Renderiza as listas
     renderServiceList(displayItems);
     renderReadyList(readyItems);
 }
@@ -218,18 +226,18 @@ function renderDisplay() {
  * @param {Array} items - A lista de itens para exibir.
  */
 function renderServiceList(items) {
-    const tableBody = document.getElementById('ongoing-services-table');
+    const cardsContainer = document.getElementById('ongoing-services-cards');
     if (items.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem;">Nenhum veículo em atendimento.</td></tr>`;
+        cardsContainer.innerHTML = `<p style="text-align: center; padding: 2rem; width: 100%;">Nenhum veículo em atendimento.</p>`;
         return;
     }
-    tableBody.innerHTML = items.map((item, index) => `
-        <tr>
-            <td><div class="queue-position">${index + 1}º</div></td>
-            <td>${item.plate}</td>
-            <td>${item.service}</td>
-            <td><span class="status-badge ${item.statusClass}">${item.status}</span></td>
-        </tr>
+    cardsContainer.innerHTML = items.map((item, index) => `
+        <div class="service-card">
+            <div class="car-info">
+                <div class="car-model">${item.model || 'Veículo'}</div>
+                <div class="car-plate">${item.plate}</div>
+            </div>
+        </div>
     `).join('');
 }
 
@@ -238,13 +246,12 @@ function renderServiceList(items) {
  * @param {Array} items - A lista de itens prontos.
  */
 function renderReadyList(items) {
-    const tableBody = document.getElementById('completed-services-table');
-    tableBody.innerHTML = items.map(item => `
-        <tr>
-            <td>${item.plate}</td>
-            <td>${item.service}</td>
-            <td><span class="status-badge ready">Pronto</span></td>
-        </tr>
+    const cardsContainer = document.getElementById('completed-services-cards');
+    cardsContainer.innerHTML = items.map(item => `
+        <div class="completed-card">
+            <div class="car-model">${item.model || 'Veículo'}</div>
+            <div class="car-plate">${item.plate}</div>
+        </div>
     `).join('');
 }
 
@@ -261,6 +268,7 @@ function renderPromotions(promotions) {
         return;
     }
 
+    // ATUALIZADO: Reinicia a rolagem sempre que as promoções são renderizadas
     listContainer.innerHTML = promotions.map(promo => {
         // Formata a data de validade de 'YYYY-MM-DD' para 'DD/MM/YYYY'
         let formattedDate = 'Sem validade';
@@ -278,16 +286,17 @@ function renderPromotions(promotions) {
         const iconClass = promo.icon || 'fa-solid fa-tags';
 
         return `
-            <div class="promo-card">
-                <div class="promo-icon"><i class="${iconClass}"></i></div>
-                <div class="promo-details">
-                    <p class="promo-title">${promo.title || 'Promoção'}</p>
-                    <p class="promo-description">${promo.description || ''}</p>
-                    <p class="promo-offer">${promo.offer || ''}</p>
-                    <p class="promo-validity">${formattedDate}</p>
-                </div>
+            <div class="promotion-card">
+                <h4>
+                    <i class="${iconClass}"></i>
+                    ${promo.title || 'Promoção'}
+                </h4>
+                <p>${promo.description || ''}</p>
+                <p class="expiry-date">${formattedDate}</p>
             </div>`;
     }).join('');
+
+    ScrollManager.reinit(listContainer);
 }
 
 /**
@@ -296,6 +305,7 @@ function renderPromotions(promotions) {
 const ScrollManager = {
     instances: [],
     isPaused: false,
+    initializedElements: new WeakMap(),
 
     /**
      * Inicia o auto-scroll para um elemento.
@@ -303,6 +313,7 @@ const ScrollManager = {
      */
     init(element) {
         const instance = {
+            id: element.id || `scroll-instance-${this.instances.length}`,
             element: element,
             timeoutId: null,
             isScrolling: false,
@@ -319,7 +330,7 @@ const ScrollManager = {
             }
             
             instance.isScrolling = true;
-            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP); // Usa a nova constante de 20s
+            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP); // Usa a constante de tempo de espera
         };
 
         const scrollDown = () => {
@@ -339,6 +350,21 @@ const ScrollManager = {
         instance.start = startCycle;
         this.instances.push(instance);
         instance.start();
+    },
+    
+    /**
+     * NOVO: Reinicia a rolagem para um elemento específico.
+     * Útil quando o conteúdo do elemento muda.
+     */
+    reinit(element) {
+        // Encontra a instância existente para este elemento
+        const instanceIndex = this.instances.findIndex(inst => inst.element === element);
+        if (instanceIndex > -1) {
+            const instance = this.instances[instanceIndex];
+            if (instance.timeoutId) clearTimeout(instance.timeoutId);
+            // Reinicia o ciclo de rolagem
+            instance.start();
+        }
     },
 
     /**
@@ -543,7 +569,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDisplay = (...args) => {
         originalRender.apply(this, args);
         if (isFirstRender) {
-            document.querySelectorAll('.table-container, #promotions-list').forEach(el => ScrollManager.init(el));
+            // Reativado: Inicia a rolagem para os contêineres na primeira carga.
+            document.querySelectorAll('.cards-container, #promotions-list').forEach(el => ScrollManager.init(el));
             isFirstRender = false;
         }
     };
