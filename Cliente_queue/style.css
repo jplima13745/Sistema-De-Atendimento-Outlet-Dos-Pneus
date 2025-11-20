@@ -21,7 +21,7 @@
 
 body {
     font-family: 'Inter', sans-serif;
-    background-color: var(--in-progress-blue);
+    background-color: #f0f2f5; /* Fundo alterado para cinza claro (quase branco) */
     color: var(--dark-text);
     overflow-x: hidden;
 }
@@ -44,13 +44,13 @@ body {
 
 .logo span:first-child {
     font-weight: 700;
-    font-size: 1.8rem;
+    font-size: 2.2rem; /* Fonte aumentada para maior destaque */
     color: var(--primary-yellow); /* Cor da loja */
 }
 
 .logo span:last-child {
     font-weight: 500;
-    font-size: 1.8rem;
+    font-size: 2.2rem; /* Fonte aumentada para maior destaque */
     color: var(--in-progress-blue); /* Cor da loja */
 }
 
@@ -94,6 +94,12 @@ body {
     gap: 1rem;
 }
 
+/* Adiciona um fundo azul claro para destacar as seções de serviço */
+.ongoing-services,
+.completed-services {
+    background-color: #d6e3f6; /* Azul claro para destaque */
+}
+
 .section-header {
     font-size: 1.3rem;
     font-weight: 700;
@@ -104,12 +110,23 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Estilo para os cabeçalhos das seções de serviço (RF - Pedido do usuário) */
+.ongoing-services .section-header,
+.completed-services .section-header {
+    background-color: var(--primary-yellow); /* Fundo amarelo da loja */
+    color: var(--dark-text); /* Garante bom contraste */
+    border-radius: 6px 6px 0 0;
+    padding: 1rem;
+    margin: -1.5rem -1.5rem 1rem -1.5rem; /* Ajusta para preencher o topo do card */
+    border-bottom: none;
+}
 /* --- LAYOUT DE CARDS (RF004, RF005, RF010) --- */
 .cards-container {
     display: flex;
     flex-flow: column wrap; /* Organiza em colunas e quebra para a próxima */
     gap: 1rem;
-    max-height: calc(5 * (80px + 1rem)); /* Altura máxima ajustada para 5 cards (80px de altura + 1rem de gap) */
+    /* A altura máxima fixa foi removida para permitir que o contêiner cresça. */
+    flex-grow: 1; /* Faz o contêiner ocupar o espaço vertical disponível. */
     overflow-y: hidden; /* Esconde a rolagem vertical */
     overflow-x: auto; /* Permite rolagem horizontal se muitas colunas forem criadas */
     align-content: flex-start; /* Alinha as colunas no início */
@@ -120,22 +137,24 @@ body {
     background-color: var(--background-color);
     border-left: 5px solid var(--primary-yellow);
     border-radius: 6px;
-    padding: 1rem;
-    width: 290px; /* Largura reduzida em 10% */
-    height: 80px; /* Altura reduzida para card simples */
+    padding: 1.2rem; /* Padding aumentado */
+    width: 320px; /* Largura aumentada para comportar os status */
+    min-height: 110px; /* Altura mínima para garantir espaço */
+    height: auto; /* Altura automática para se ajustar ao conteúdo */
     display: flex;
+    justify-content: space-between; /* Espaça a info do carro e o progresso */
     align-items: center; /* Centraliza o conteúdo verticalmente */
 }
 
 .car-info {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 0.2rem; /* Leve espaçamento entre modelo e placa */
 }
 
 
 .service-card .car-model {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: var(--in-progress-blue); /* Cor da loja para o modelo do carro */
 }
@@ -144,6 +163,42 @@ body {
     font-size: 1rem;
     color: var(--light-text);
     /* margin-top: -8px; */ /* Removido para dar mais espaço */
+}
+
+/* --- Nova Seção de Progresso do Serviço --- */
+.service-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem; /* Espaço entre cada item de serviço */
+    align-self: center; /* Alinha ao centro do card */
+}
+
+.progress-item {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end; /* Alinha itens à direita */
+    gap: 0.75rem; /* Espaço entre o nome e a bolinha */
+}
+
+.progress-item .service-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--light-text);
+}
+
+.status-circle {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #ced4da; /* Borda cinza claro para bolinha vazia */
+    background-color: transparent;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Estilos para a bolinha preenchida */
+.status-circle.completed {
+    background-color: var(--border-color); /* Cor padrão caso a específica não aplique */
+    border-color: transparent;
 }
 
 /* Cards de Serviços Concluídos (RF001) */
@@ -221,25 +276,51 @@ body {
     scrollbar-width: none;  /* Firefox */
 }
 
-.promotion-card {
-    background-color: var(--background-color);
-    border-radius: 6px;
-    padding: 1rem;
+/* --- Estilo para cada item de promoção --- */
+.promotion-item {
+    position: relative; /* Necessário para posicionar o pseudo-elemento */
+    padding-left: 1.25rem; /* Aumenta o recuo para compensar a nova "borda" */
+    padding-bottom: 1rem; /* Espaçamento interno inferior */
+    margin-bottom: 1rem;  /* Espaçamento externo inferior */
+    border-bottom: 1px solid #333333; /* Linha separadora em cinza escuro */
 }
 
-.promotion-card h4 {
+/* Cria a linha vermelha usando um pseudo-elemento */
+.promotion-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 4px; /* Largura da linha */
+    height: calc(100% - 1rem); /* Altura da linha (100% menos o espaçamento inferior) */
+    background-color: var(--danger-red);
+    border-radius: 2px; /* Suaviza as pontas da linha */
+}
+
+/* Remove a linha e a margem do último item para um acabamento limpo */
+.promotion-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.promotion-item h4 {
     font-size: 1.2rem;
-    color: var(--in-progress-blue); /* Cor da loja para o título da promoção */
-    margin-bottom: 0.5rem;
+    color: #007BFF; /* Azul vibrante para o título */
+    margin-bottom: 0.6rem;
 }
 
-.promotion-card p {
-    margin-bottom: 0.75rem;
+.promotion-item p {
+    margin-bottom: 0.8rem;
+    color: #28a745; /* Verde para a descrição */
+    font-weight: 1000; /* Aumenta o peso da fonte para melhor leitura */
 }
 
-.promotion-card .expiry-date {
-    font-weight: 700;
-    color: var(--danger-red);
+.promotion-item .expiry-date {
+    font-weight: bold; /* Adicionado para maior destaque */
+    color: #DC3545; /* Vermelho vibrante para a data de validade */
+    font-style: italic;
+    font-size: 0.9rem; /* Tamanho da fonte reduzido em 20% */
 }
 
 /* --- Container de Anúncios --- */
@@ -270,3 +351,8 @@ body {
 .hidden {
     display: none !important;
 }
+
+/* Cores específicas para cada serviço quando concluído */
+.status-circle.completed.tires { background-color: var(--service-tires); }
+.status-circle.completed.general { background-color: var(--service-general); }
+.status-circle.completed.alignment { background-color: var(--service-alignment); }
