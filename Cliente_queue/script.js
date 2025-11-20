@@ -1,8 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getFirestore, collection, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// --- Configuração do Firebase (copiada do auth.js) ---
+// --- Configuração do Firebase ---
 const LOCAL_FIREBASE_CONFIG = {
     apiKey: "AIzaSyDleQ5Y1-o7Uoo3zOXKIm35KljdxJuxvWo",
     authDomain: "banco-de-dados-outlet2-0.firebaseapp.com",
@@ -22,74 +22,66 @@ const APP_ID = 'local-autocenter-app';
 const CLIENT_ROLE = 'cliente';
 const SERVICE_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/serviceJobs`;
 const ALIGNMENT_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/alignmentQueue`;
-const PROMOTIONS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/promotions`; // NOVO: Caminho para a coleção de promoções
+const PROMOTIONS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/promotions`;
 
-// Status do Sistema Operacional
+// Status do Sistema Operacional - CORRIGIDO
 const STATUS_PENDING = 'Pendente';
 const STATUS_READY = 'Pronto para Pagamento';
 const STATUS_GS_FINISHED = 'Serviço Geral Concluído';
+const STATUS_IN_PROGRESS = 'Em Andamento';
 
-// Status do Alinhamento
+// Status do Alinhamento - CORRIGIDO
 const STATUS_WAITING_GS = 'Aguardando Serviço Geral';
 const STATUS_WAITING = 'Aguardando';
 const STATUS_ATTENDING = 'Em Atendimento';
+const STATUS_ALIGNMENT_FINISHED = 'Finalizado';
 
 // --- Estado Global ---
 let serviceJobs = [];
 let alignmentQueue = [];
-let ads = []; // NOVO: Armazena a lista de anúncios
-const SCROLL_WAIT_AT_TOP = 15 * 1000; // ATUALIZADO: Tempo de espera da rolagem no topo (15 segundos)
+let ads = [];
+const SCROLL_WAIT_AT_TOP = 10 * 1000;
 
-// --- Estado do Ciclo de Anúncios (RF005) ---
-const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev'; // URL da API de Marketing
-let adCycleTimeout = null; 
-let globalImageDuration = 10; // Duração padrão em segundos para imagens, caso a API falhe.
-let queueDisplayInterval = 2 * 60 * 1000; // Padrão: 2 minutos de exibição da fila entre anúncios. Será atualizado pela API.
+// --- Estado do Ciclo de Anúncios ---
+const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
+let adCycleTimeout = null;
+let globalImageDuration = 10;
+let queueDisplayInterval = 2 * 60 * 1000;
 let currentAdIndex = 0;
-const readyAlert = document.getElementById('ready-alert');
 
-
-// --- Gerenciamento de Exibição (Fila vs Anúncios) ---
+// --- Gerenciamento de Exibição ---
 const queueContainer = document.getElementById('queue-container');
 const adContainer = document.getElementById('ad-container');
 
 /**
- * NOVO: Importa a função de login anônimo do Firebase.
- */
-import { signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-/**
-/**
- * NOVO: Aguarda a confirmação da sessão anônima do Firebase antes de iniciar os listeners.
- * Isso resolve o problema de permissão que ocorria antes.
+ * Aguarda a confirmação da sessão anônima do Firebase
  */
 function waitForFirebaseAuth() {
     onAuthStateChanged(auth, (user) => {
-        if (user) { // Usuário anônimo está logado
-            console.log("Usuário anônimo autenticado com sucesso no Firebase.");
+        if (user) {
+            console.log("✅ Usuário anônimo autenticado com sucesso no Firebase.");
             initializeSystem();
         } else {
-            // Se não houver usuário, tenta fazer o login anônimo.
-            console.log("Nenhum usuário. Tentando login anônimo...");
-            signInAnonymously(auth).catch(error => console.error("Falha no login anônimo:", error));
+            console.log("⏳ Nenhum usuário. Tentando login anônimo...");
+            signInAnonymously(auth).catch(error => console.error("❌ Falha no login anônimo:", error));
         }
     });
 }
 
 /**
- * Inicia os listeners do Firestore e outras funcionalidades do sistema.
+ * Inicia os listeners do Firestore e outras funcionalidades
  */
 function initializeSystem() {
     setupClock();
     setupRealtimeListeners();
-    fetchAds(); // Busca os anúncios da API
-    fetchGlobalConfig(); // Busca a configuração de duração padrão
-    fetchIntervalConfig(); // NOVO: Busca a configuração de intervalo
-    startAdCycle(); // Inicia o ciclo de exibição de anúncios
+    fetchAds();
+    fetchGlobalConfig();
+    fetchIntervalConfig();
+    startAdCycle();
 }
 
 /**
- * Configura um relógio em tempo real no cabeçalho.
+ * Configura o relógio em tempo real
  */
 function setupClock() {
     const clockElement = document.getElementById('datetime-display');
@@ -100,130 +92,208 @@ function setupClock() {
         const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
         const dateString = now.toLocaleDateString('pt-BR', options);
         const timeString = now.toLocaleTimeString('pt-BR');
-        clockElement.textContent = `${dateString.replace(/\.$/, '')} | ${timeString}`; // Remove o ponto final do "short" weekday
+        clockElement.textContent = `${dateString.replace(/\.$/, '')} | ${timeString}`;
     }
 
     updateClock();
-    setInterval(updateClock, 1000); // Atualiza a cada segundo
+    setInterval(updateClock, 1000);
 }
 
 /**
- * Configura os listeners para ouvir as coleções do Firestore em tempo real. (RF001)
+ * CORRIGIDO: Configura os listeners do Firestore
  */
 function setupRealtimeListeners() {
+    // CORRIGIDO: Incluindo mais status relevantes e sem usar 'in' com mais de 10 itens
     const serviceQuery = query(
-        collection(db, SERVICE_COLLECTION_PATH),
-        where('status', 'in', [STATUS_PENDING, STATUS_READY, STATUS_GS_FINISHED])
+        collection(db, SERVICE_COLLECTION_PATH)
     );
 
     onSnapshot(serviceQuery, (snapshot) => {
-        serviceJobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Filtra os status relevantes no cliente
+        serviceJobs = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(job => {
+                const status = job.status;
+                return status === STATUS_PENDING || 
+                       status === STATUS_READY || 
+                       status === STATUS_GS_FINISHED || 
+                       status === STATUS_IN_PROGRESS ||
+                       status === 'Serviço Geral Concluído';
+            });
+        
+        console.log("📋 Serviços carregados:", serviceJobs.length);
+        serviceJobs.forEach(job => {
+            console.log(`  - ${job.licensePlate}: ${job.status} | GS: ${job.statusGS} | TS: ${job.statusTS}`);
+        });
         renderDisplay();
     }, (error) => {
-        console.error("Erro ao ouvir serviços:", error);
-        document.getElementById('ongoing-services-table').innerHTML = `<tr><td colspan="4">Erro ao carregar dados.</td></tr>`;
+        console.error("❌ Erro ao ouvir serviços:", error);
+        document.getElementById('ongoing-services-cards').innerHTML = 
+            `<p style="color: red; padding: 2rem; text-align: center;">Erro ao carregar dados.</p>`;
     });
 
+    // CORRIGIDO: Incluindo status 'Finalizado'
     const alignmentQuery = query(
-        collection(db, ALIGNMENT_COLLECTION_PATH),
-        where('status', 'in', [STATUS_WAITING, STATUS_ATTENDING, STATUS_WAITING_GS, STATUS_READY])
+        collection(db, ALIGNMENT_COLLECTION_PATH)
     );
 
     onSnapshot(alignmentQuery, (snapshot) => {
-        alignmentQueue = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Filtra os status relevantes no cliente
+        alignmentQueue = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(car => {
+                const status = car.status;
+                return status === STATUS_WAITING || 
+                       status === STATUS_ATTENDING || 
+                       status === STATUS_WAITING_GS || 
+                       status === STATUS_READY ||
+                       status === STATUS_ALIGNMENT_FINISHED ||
+                       status === 'Finalizado';
+            });
+        
+        console.log("🔧 Fila de alinhamento carregada:", alignmentQueue.length);
+        alignmentQueue.forEach(car => {
+            console.log(`  - ${car.licensePlate}: ${car.status}`);
+        });
         renderDisplay();
     }, (error) => {
-        console.error("Erro ao ouvir fila de alinhamento:", error);
-        document.getElementById('ongoing-services-table').innerHTML += `<tr><td colspan="4">Erro ao carregar dados.</td></tr>`;
+        console.error("❌ Erro ao ouvir fila de alinhamento:", error);
     });
 
-    // NOVO: Listener para a coleção de promoções
+    // Listener para promoções
     const promotionsQuery = query(
         collection(db, PROMOTIONS_COLLECTION_PATH),
-        orderBy("order") // ATUALIZADO: Pede ao Firebase para ordenar os resultados
+        orderBy("order")
     );
 
     onSnapshot(promotionsQuery, (snapshot) => {
         const promotions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // A ordenação agora é feita diretamente na consulta do Firestore, não é mais necessário o sort() aqui.
         renderPromotions(promotions);
     }, (error) => {
-        console.error("Erro ao ouvir promoções:", error);
-        document.getElementById('promotions-list').innerHTML = `<p class="error-message">Erro ao carregar promoções.</p>`;
+        console.error("❌ Erro ao ouvir promoções:", error);
+        document.getElementById('promotions-list').innerHTML = 
+            `<p class="error-message">Erro ao carregar promoções.</p>`;
     });
 }
 
 /**
- * Orquestra a renderização da tela, unindo e ordenando os dados.
+ * CORRIGIDO: Orquestra a renderização da tela
  */
 function renderDisplay() {
+    console.log("🎨 === INICIANDO RENDERIZAÇÃO ===");
     const vehicleData = new Map();
     const readyItems = [];
 
     const getVehicle = (plate) => {
         if (!vehicleData.has(plate)) {
-            // Inicializa com todos os serviços como 'não existentes'
             vehicleData.set(plate, { plate, model: 'Veículo', services: {}, priority: 99 });
         }
         return vehicleData.get(plate);
     };
 
-    // 1. Processa fila de SERVIÇOS GERAIS (Mecânico e Borracharia)
+    // 1. CORRIGIDO: Processa SERVIÇOS GERAIS
+    console.log("📦 Processando serviços gerais...");
     serviceJobs.forEach(job => {
+        console.log(`  🔍 Analisando ${job.licensePlate} (${job.status})`);
+        
         if (job.status === STATUS_READY) {
+            console.log(`    ✅ Adicionado aos prontos`);
             readyItems.push({ plate: job.licensePlate, model: job.carModel || 'Veículo' });
             return;
         }
 
-        // Lógica Restaurada e Corrigida: Processa apenas os serviços que estão efetivamente pendentes
-        // para não exibir carros já finalizados há tempos.
-        if (job.status === STATUS_PENDING) {
+        // CORRIGIDO: Processar serviços que não estejam finalizados/pagos
+        if (job.status !== 'Finalizado' && job.status !== 'Pago') {
             const vehicle = getVehicle(job.licensePlate);
             vehicle.model = job.carModel || vehicle.model;
+            
             if (5 < vehicle.priority) vehicle.priority = 5;
 
-            if (job.serviceType && job.serviceType.includes('Serviço Geral')) {
-                vehicle.services.general = { name: 'Mecânico', completed: job.statusGS !== 'Pendente' };
+            // CORRIGIDO: Usar 'type' ao invés de 'serviceType'
+            const jobType = job.type || job.serviceType || '';
+            
+            // Verifica se tem Serviço Geral (Mecânico)
+            if (jobType.includes('Serviço Geral') || job.statusGS) {
+                const isCompleted = job.statusGS === 'Concluído' || 
+                                   job.statusGS === 'Serviço Geral Concluído' ||
+                                   job.status === 'Serviço Geral Concluído';
+                vehicle.services.general = { 
+                    name: 'Mecânico', 
+                    completed: isCompleted
+                };
+                console.log(`    🔧 Mecânico: ${isCompleted ? '✅ Concluído' : '⏳ Em andamento'}`);
             }
 
-            if (job.serviceType && job.serviceType.includes('Serviço de Pneus')) {
-                vehicle.services.tires = { name: 'Borracheiro', completed: job.statusTS !== 'Pendente' };
+            // Verifica se tem Serviço de Pneus (Borracheiro)
+            if (jobType.includes('Pneus') || job.statusTS) {
+                const isCompleted = job.statusTS === 'Concluído' || 
+                                   job.statusTS === 'Serviço Pneus Concluído';
+                vehicle.services.tires = { 
+                    name: 'Borracheiro', 
+                    completed: isCompleted
+                };
+                console.log(`    🛞 Borracheiro: ${isCompleted ? '✅ Concluído' : '⏳ Em andamento'}`);
             }
         }
     });
 
-    // 2. Processa fila de ALINHAMENTO
+    // 2. CORRIGIDO: Processa ALINHAMENTO
+    console.log("🎯 Processando alinhamento...");
     alignmentQueue.forEach(car => {
+        console.log(`  🔍 Analisando ${car.licensePlate} (${car.status})`);
+        
+        const vehicle = getVehicle(car.licensePlate);
+        vehicle.model = car.carModel || vehicle.model;
+
+        // CORRIGIDO: Considerar 'Finalizado' como concluído
+        const isAlignmentCompleted = car.status === STATUS_READY || 
+                                    car.status === STATUS_ALIGNMENT_FINISHED ||
+                                    car.status === 'Finalizado';
+
+        vehicle.services.alignment = { 
+            name: 'Alinhamento', 
+            completed: isAlignmentCompleted 
+        };
+        
+        console.log(`    📐 Alinhamento: ${isAlignmentCompleted ? '✅ Concluído' : '⏳ Em andamento'}`);
+
+        // CORRIGIDO: Adiciona à lista de prontos APENAS se o status for exatamente 'Pronto para Pagamento'.
         if (car.status === STATUS_READY) {
-            // Evita adicionar duplicados se já veio do serviceJobs
             if (!readyItems.some(item => item.plate === car.licensePlate)) {
                 readyItems.push({ plate: car.licensePlate, model: car.carModel || 'Veículo' });
             }
-            return;
         }
-        const vehicle = getVehicle(car.licensePlate);
-        vehicle.model = car.carModel || vehicle.model;
+        
         let priority = car.status === STATUS_ATTENDING ? 1 : (car.status === STATUS_WAITING ? 2 : 3);
         if (priority < vehicle.priority) vehicle.priority = priority;
-
-        // Adiciona o serviço de Alinhamento. A bolinha só será preenchida quando o carro sair da fila de alinhamento.
-        vehicle.services.alignment = { name: 'Alinhamento', completed: false };
+        vehicle.inAlignmentQueue = true;
     });
 
-    // Converte o Map para um array
-    const displayItems = Array.from(vehicleData.values());
+    // Filtra veículos com serviços não concluídos
+    const displayItems = Array.from(vehicleData.values()).filter(vehicle => {
+        const serviceStatuses = Object.values(vehicle.services);
+        const hasIncomplete = serviceStatuses.length > 0 && serviceStatuses.some(service => !service.completed);
+        
+        if (hasIncomplete) {
+            console.log(`✅ Exibindo ${vehicle.plate}: ${Object.keys(vehicle.services).length} serviços`);
+        }
+        
+        return hasIncomplete;
+    });
 
-    // 3. Ordena a fila principal
+    // Ordena
     displayItems.sort((a, b) => a.priority - b.priority);
 
-    // 4. Renderiza as listas
+    console.log(`📊 Resultado: ${displayItems.length} em andamento, ${readyItems.length} prontos`);
+    console.log("🎨 === FIM DA RENDERIZAÇÃO ===\n");
+
+    // Renderiza
     renderServiceList(displayItems);
     renderReadyList(readyItems);
 }
 
 /**
- * Renderiza a lista de serviços em andamento.
- * @param {Array} items - A lista de itens para exibir.
+ * Renderiza a lista de serviços em andamento
  */
 function renderServiceList(items) {
     const cardsContainer = document.getElementById('ongoing-services-cards');
@@ -231,19 +301,33 @@ function renderServiceList(items) {
         cardsContainer.innerHTML = `<p style="text-align: center; padding: 2rem; width: 100%;">Nenhum veículo em atendimento.</p>`;
         return;
     }
-    cardsContainer.innerHTML = items.map((item, index) => `
-        <div class="service-card">
-            <div class="car-info">
-                <div class="car-model">${item.model || 'Veículo'}</div>
-                <div class="car-plate">${item.plate}</div>
+    cardsContainer.innerHTML = items.map((item) => {
+        const progressHtml = Object.entries(item.services).map(([key, service]) => {
+            const statusClass = service.completed ? `completed ${key}` : '';
+            return `
+                <div class="progress-item">
+                    <span class="service-name">${service.name}</span>
+                    <div class="status-circle ${statusClass}"></div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="service-card">
+                <div class="car-info">
+                    <div class="car-model">${item.model || 'Veículo'}</div>
+                    <div class="car-plate">${item.plate}</div>
+                </div>
+                <div class="service-progress">
+                    ${progressHtml}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 /**
- * Renderiza a lista de serviços concluídos.
- * @param {Array} items - A lista de itens prontos.
+ * Renderiza a lista de serviços concluídos
  */
 function renderReadyList(items) {
     const cardsContainer = document.getElementById('completed-services-cards');
@@ -256,8 +340,7 @@ function renderReadyList(items) {
 }
 
 /**
- * NOVO: Renderiza a lista de promoções na barra lateral.
- * @param {Array} promotions - A lista de promoções do Firestore.
+ * Renderiza a lista de promoções
  */
 function renderPromotions(promotions) {
     const listContainer = document.getElementById('promotions-list');
@@ -268,9 +351,7 @@ function renderPromotions(promotions) {
         return;
     }
 
-    // ATUALIZADO: Reinicia a rolagem sempre que as promoções são renderizadas
     listContainer.innerHTML = promotions.map(promo => {
-        // Formata a data de validade de 'YYYY-MM-DD' para 'DD/MM/YYYY'
         let formattedDate = 'Sem validade';
         if (promo.validity) {
             try {
@@ -282,11 +363,10 @@ function renderPromotions(promotions) {
             }
         }
 
-        // O ícone vem do DB, ex: "fa-solid fa-truck-monster"
         const iconClass = promo.icon || 'fa-solid fa-tags';
 
         return `
-            <div class="promotion-card">
+            <div class="promotion-item">
                 <h4>
                     <i class="${iconClass}"></i>
                     ${promo.title || 'Promoção'}
@@ -300,17 +380,12 @@ function renderPromotions(promotions) {
 }
 
 /**
- * NOVO: Gerencia a rolagem automática dos contêineres.
+ * Gerencia a rolagem automática
  */
 const ScrollManager = {
     instances: [],
     isPaused: false,
-    initializedElements: new WeakMap(),
 
-    /**
-     * Inicia o auto-scroll para um elemento.
-     * @param {HTMLElement} element - O elemento do contêiner a ser rolado.
-     */
     init(element) {
         const instance = {
             id: element.id || `scroll-instance-${this.instances.length}`,
@@ -320,30 +395,25 @@ const ScrollManager = {
         };
 
         const startCycle = () => {
-            // Cancela qualquer ciclo anterior para evitar duplicação
             if (instance.timeoutId) clearTimeout(instance.timeoutId);
-
-            // Só inicia se não estiver pausado e se houver conteúdo para rolar
             if (this.isPaused || element.scrollHeight <= element.clientHeight) {
                 instance.isScrolling = false;
                 return;
             }
-            
             instance.isScrolling = true;
-            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP); // Usa a constante de tempo de espera
+            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP);
         };
 
         const scrollDown = () => {
             if (this.isPaused) return;
             const targetY = element.scrollHeight - element.clientHeight;
-            this.smoothScroll(element, targetY, 2000, scrollUp); // Rola para baixo em 2s
+            this.smoothScroll(element, targetY, 2000, scrollUp);
         };
 
         const scrollUp = () => {
             if (this.isPaused) return;
-            // Pequena pausa no final antes de subir
             setTimeout(() => {
-                this.smoothScroll(element, 0, 2000, startCycle); // Rola para cima em 2s e reinicia o ciclo
+                this.smoothScroll(element, 0, 2000, startCycle);
             }, 500);
         };
 
@@ -352,28 +422,15 @@ const ScrollManager = {
         instance.start();
     },
     
-    /**
-     * NOVO: Reinicia a rolagem para um elemento específico.
-     * Útil quando o conteúdo do elemento muda.
-     */
     reinit(element) {
-        // Encontra a instância existente para este elemento
         const instanceIndex = this.instances.findIndex(inst => inst.element === element);
         if (instanceIndex > -1) {
             const instance = this.instances[instanceIndex];
             if (instance.timeoutId) clearTimeout(instance.timeoutId);
-            // Reinicia o ciclo de rolagem
             instance.start();
         }
     },
 
-    /**
-     * Rola suavemente um elemento para uma posição.
-     * @param {HTMLElement} el - O elemento.
-     * @param {number} to - A posição de destino.
-     * @param {number} duration - Duração da animação.
-     * @param {Function} callback - Função a ser chamada no final.
-     */
     smoothScroll(el, to, duration, callback) {
         const start = el.scrollTop;
         const change = to - start;
@@ -393,13 +450,11 @@ const ScrollManager = {
         requestAnimationFrame(animateScroll);
     },
 
-    // Pausa todas as instâncias de rolagem
     pauseAll() {
         this.isPaused = true;
         this.instances.forEach(inst => clearTimeout(inst.timeoutId));
     },
 
-    // Retoma todas as instâncias de rolagem
     resumeAll() {
         this.isPaused = false;
         this.instances.forEach(inst => {
@@ -407,9 +462,9 @@ const ScrollManager = {
         });
     }
 };
- 
+
 /**
- * NOVO: Busca a configuração de duração global para imagens da API.
+ * Busca configuração de duração global
  */
 async function fetchGlobalConfig() {
     try {
@@ -418,36 +473,34 @@ async function fetchGlobalConfig() {
             const config = await response.json();
             if (config && config.value) {
                 globalImageDuration = parseInt(config.value, 10);
-                console.log(`Duração global para imagens definida para: ${globalImageDuration}s`);
+                console.log(`⏱️ Duração global: ${globalImageDuration}s`);
             }
         }
     } catch (error) {
-        console.error("Erro ao buscar configuração de duração global. Usando padrão:", error);
+        console.error("❌ Erro ao buscar duração global:", error);
     }
 }
 
 /**
- * NOVO: Busca a configuração de intervalo de exibição da fila da API.
+ * Busca configuração de intervalo
  */
 async function fetchIntervalConfig() {
     try {
         const response = await fetch(`${API_BASE_URL}/config/interval`);
         if (response.ok) {
             const config = await response.json();
-            // O valor da API vem em milissegundos
             if (config && config.value && !isNaN(parseInt(config.value, 10))) {
                 queueDisplayInterval = parseInt(config.value, 10);
-                console.log(`Intervalo de exibição da fila definido pela API: ${queueDisplayInterval / 60000} minuto(s)`);
+                console.log(`⏱️ Intervalo da fila: ${queueDisplayInterval / 60000} min`);
             }
         }
     } catch (error) {
-        console.error("Erro ao buscar configuração de intervalo. Usando padrão:", error);
+        console.error("❌ Erro ao buscar intervalo:", error);
     }
 }
 
-
 /**
- * Busca a lista de anúncios ativos da API de marketing.
+ * Busca anúncios da API
  */
 async function fetchAds() {
     try {
@@ -456,120 +509,101 @@ async function fetchAds() {
             throw new Error('Falha ao buscar mídias da API.');
         }
         const mediaItems = await response.json();
-        // Filtra apenas os ativos e mapeia para o formato esperado
         ads = mediaItems
             .filter(item => item.status === 'ativo')
             .map(item => ({ ...item, type: item.type === 'Imagem' ? 'image' : 'video' }))
-            .sort((a, b) => (a.order || 99) - (b.order || 99)); // Ordena pela ordem definida
+            .sort((a, b) => (a.order || 99) - (b.order || 99));
 
-        console.log(`Anúncios ativos carregados via API: ${ads.length}`);
+        console.log(`📺 Anúncios carregados: ${ads.length}`);
     } catch (error) {
-        console.error("Erro ao buscar anúncios da API:", error);
-        ads = []; // Garante que a lista de anúncios fique vazia em caso de erro (RF010)
+        console.error("❌ Erro ao buscar anúncios:", error);
+        ads = [];
     }
 }
 
 /**
- * Inicia o ciclo que agenda a exibição de anúncios.
+ * Inicia o ciclo de anúncios
  */
 function startAdCycle() {
-    // Limpa qualquer agendamento anterior para evitar duplicatas
     if (adCycleTimeout) {
         clearTimeout(adCycleTimeout);
     }
-    // ATUALIZADO: Agenda a exibição do próximo anúncio para depois do intervalo definido.
     adCycleTimeout = setTimeout(showNextAd, queueDisplayInterval);
-    console.log(`Fila de clientes em exibição. Próximo anúncio em ${queueDisplayInterval / 60000} minuto(s).`);
+    console.log(`📅 Próximo anúncio em ${queueDisplayInterval / 60000} min`);
 }
 
 /**
- * Exibe o próximo anúncio da lista.
+ * Exibe o próximo anúncio
  */
 function showNextAd() {
-    // RF010: Se não houver anúncios, simplesmente reagenda e continua exibindo a fila.
     if (ads.length === 0) {
-        console.warn("Nenhum anúncio para exibir. Reagendando ciclo.");
-        // Tenta novamente após um intervalo, caso os anúncios sejam cadastrados depois.
+        console.warn("⚠️ Nenhum anúncio disponível");
         adCycleTimeout = setTimeout(startAdCycle, 30000);
         return;
     }
 
-    // Seleciona o próximo anúncio em formato de rodízio
     const ad = ads[currentAdIndex];
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
-    // Para a rolagem da fila e esconde o container
-    ScrollManager.pauseAll(); // Pausa a rolagem automática
-    queueContainer.classList.add('fade-hidden'); // Inicia o fade-out da fila
+    ScrollManager.pauseAll();
+    queueContainer.classList.add('fade-hidden');
 
-    setTimeout(() => { // Aguarda a transição para trocar os conteúdos
+    setTimeout(() => {
         queueContainer.classList.add('hidden');
-        adContainer.innerHTML = ''; // Limpa anúncios anteriores
+        adContainer.innerHTML = '';
         adContainer.classList.remove('hidden', 'fade-hidden');
 
         let adElement;
         if (ad.type === 'video') {
-            const video = document.createElement('video'); // RF005
+            const video = document.createElement('video');
             video.src = ad.url;
             video.autoplay = true;
-            // O som foi ativado conforme solicitado.
-            // Nota: A reprodução automática com som pode ser bloqueada por políticas do navegador.
             video.muted = false;
             video.playsInline = true;
-            // O vídeo não deve ser em loop para que o evento 'onended' funcione corretamente.
             adElement = video;
             
-            // Quando o vídeo terminar, chama a função para esconder o anúncio.
             video.onended = hideAdAndResume;
-
-            // Adiciona o elemento ao DOM antes de tentar reproduzir
             adContainer.appendChild(adElement);
+            video.play().catch(error => console.error("❌ Falha ao reproduzir vídeo:", error));
 
-            // VERSÃO FINAL: Tenta reproduzir o vídeo com som.
-            // Para que isso funcione, o navegador DEVE ter permissão para reproduzir som
-            // automaticamente para este site. Caso contrário, o vídeo não tocará.
-            video.play().catch(error => console.error("Falha ao reproduzir vídeo. Verifique as permissões de som do navegador.", error));
-
-        } else { // 'image'
-            const img = document.createElement('img'); // RF005
+        } else {
+            const img = document.createElement('img');
             img.src = ad.url;
             adElement = img;
 
-            // ATUALIZADO: Usa a duração específica da imagem ou a global.
             const displayTime = (ad.duration || globalImageDuration) * 1000;
-            console.log(`Exibindo imagem por ${displayTime / 1000}s`);
+            console.log(`🖼️ Exibindo imagem por ${displayTime / 1000}s`);
             adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
             adContainer.appendChild(adElement);
         }
 
-    }, 400); // Tempo da transição em ms
+    }, 400);
 }
 
 /**
- * Esconde o anúncio, volta a exibir a fila e reinicia o ciclo.
+ * Esconde anúncio e volta à fila
  */
 function hideAdAndResume() {
-    adContainer.classList.add('fade-hidden'); // Inicia o fade-out do anúncio
+    adContainer.classList.add('fade-hidden');
     setTimeout(() => {
-        adContainer.classList.add('hidden'); // Esconde o container do anúncio
+        adContainer.classList.add('hidden');
         queueContainer.classList.remove('hidden', 'fade-hidden');
-        ScrollManager.resumeAll(); // Retoma a rolagem da fila
-        startAdCycle(); // Reagenda o próximo anúncio
-    }, 400); // Tempo da transição em ms
+        ScrollManager.resumeAll();
+        startAdCycle();
+    }, 400);
 }
 
 // --- Inicialização ---
 let isFirstRender = true;
 
 document.addEventListener('DOMContentLoaded', () => {
-    waitForFirebaseAuth(); // Inicia diretamente a verificação do Firebase.
+    console.log("🚀 Iniciando aplicação...");
+    waitForFirebaseAuth();
 
-    // A inicialização da rolagem será feita após a primeira renderização dos dados
     const originalRender = renderDisplay;
     renderDisplay = (...args) => {
         originalRender.apply(this, args);
         if (isFirstRender) {
-            // Reativado: Inicia a rolagem para os contêineres na primeira carga.
             document.querySelectorAll('.cards-container, #promotions-list').forEach(el => ScrollManager.init(el));
             isFirstRender = false;
         }
