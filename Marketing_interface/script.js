@@ -936,8 +936,8 @@ configForm.addEventListener('submit', async (e) => {
 
     // Adiciona a promise para salvar o Intervalo, se o campo foi preenchido
     if (intervalDuration) {
-        // Converte minutos para milissegundos
-        const intervalInMs = parseInt(intervalDuration, 10) * 60 * 1000;
+        // Converte segundos para milissegundos
+        const intervalInMs = parseInt(intervalDuration, 10) * 1000;
 
         const intervalPromise = fetch(`${API_BASE_URL}/config/interval`, {
             method: 'PUT',
@@ -986,9 +986,9 @@ async function loadIntervalDuration() {
         if (response.ok) {
             const config = await response.json();
             if (config && config.value) {
-                // Converte de milissegundos para minutos para exibir no input
-                const intervalInMinutes = parseInt(config.value, 10) / 60000;
-                intervalDurationInput.value = intervalInMinutes;
+                // Converte de milissegundos para segundos para exibir no input
+                const intervalInSeconds = parseInt(config.value, 10) / 1000;
+                intervalDurationInput.value = intervalInSeconds;
             }
         }
         // Se a resposta não for ok, simplesmente não preenche o campo.

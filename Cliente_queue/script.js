@@ -48,7 +48,7 @@ const SCROLL_WAIT_AT_TOP = 10 * 1000;
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
 let adCycleTimeout = null;
 let globalImageDuration = 10;
-let queueDisplayInterval = 2 * 60 * 1000;
+let queueDisplayInterval = 120 * 1000; // Padrão de 2 minutos, mas será substituído pela configuração da API.
 let currentAdIndex = 0;
 
 // --- Gerenciamento de Exibição ---
@@ -73,12 +73,12 @@ function waitForFirebaseAuth() {
 /**
  * Inicia os listeners do Firestore e outras funcionalidades
  */
-function initializeSystem() {
+async function initializeSystem() {
     setupClock();
     setupRealtimeListeners();
     fetchAds();
-    fetchGlobalConfig();
-    fetchIntervalConfig();
+    await fetchGlobalConfig(); // Espera a busca para garantir que os valores sejam aplicados
+    await fetchIntervalConfig(); // CORREÇÃO: Espera a busca do intervalo antes de continuar
     startAdCycle();
 }
 
@@ -158,7 +158,7 @@ function setupRealtimeListeners() {
                        status === 'Finalizado';
             });
         
-        renderDisplay();
+        renderDisplay(); // CORREÇÃO: Força a re-renderização completa para atualizar as posições da fila.
     }, (error) => {
         console.error("❌ Erro ao ouvir fila de alinhamento:", error);
     });
@@ -262,12 +262,36 @@ function renderDisplay() {
 
         vehicle.services.alignment = { 
             name: 'Alinhamento', 
-            completed: isAlignmentCompleted 
+            completed: isAlignmentCompleted,
+            status: car.status // NOVO: Adiciona o status detalhado para o alinhamento
         };
         
         let priority = car.status === STATUS_ATTENDING ? 1 : (car.status === STATUS_WAITING ? 2 : 3);
         if (priority < vehicle.priority) vehicle.priority = priority;
         vehicle.inAlignmentQueue = true;
+    });
+
+    // NOVO: Calcula a posição na fila de alinhamento
+    const waitingForAlignment = alignmentQueue
+        .filter(car => car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS);
+
+    // CORREÇÃO: A ordenação deve seguir a mesma lógica de prioridade do painel operacional.
+    // Prioridade: 1. Em Atendimento, 2. Aguardando Alinhamento, 3. Aguardando Serviço Geral.
+    waitingForAlignment.sort((a, b) => {
+        const getPriority = (status) => {
+            if (status === STATUS_ATTENDING) return 1;
+            if (status === STATUS_WAITING) return 2;
+            if (status === STATUS_WAITING_GS) return 3;
+            return 4;
+        };
+        const priorityA = getPriority(a.status);
+        const priorityB = getPriority(b.status);
+        return priorityA - priorityB;
+    });
+
+    waitingForAlignment.forEach((car, index) => {
+        const vehicle = getVehicle(car.licensePlate);
+        vehicle.alignmentPosition = index + 1;
     });
 
     // Filtra veículos com serviços não concluídos
@@ -308,10 +332,34 @@ function renderServiceList(items) {
         const progressHtml = Object.entries(item.services).map(([key, service]) => {
             const statusClass = service.completed ? `completed ${key}` : '';
             const checkmark = service.completed ? '&#10003;' : ''; // Símbolo de "check"
+            
+            let statusTextClass = statusClass; // Começa com a classe base
+            // Lógica para definir o texto de status
+            let statusText = '';
+            if (key === 'alignment') {
+                if (service.completed) {
+                    statusText = 'Concluído';
+                } else if (service.status === STATUS_ATTENDING) {
+                    statusText = 'Em Atendimento';
+                    statusTextClass = 'in-progress'; // Adiciona classe para amarelo
+                } else { // Se não está concluído nem em atendimento, está na fila
+                    statusText = `${item.alignmentPosition}º na Fila`;
+                    statusTextClass = 'in-queue'; // Adiciona classe para vermelho
+                }
+            } else {
+                statusText = service.completed ? 'Concluído' : 'Em Atendimento';
+                if (!service.completed) {
+                    statusTextClass = 'in-progress'; // Adiciona classe para amarelo
+                }
+            }
+            
             return `
                 <div class="progress-item">
-                    <span class="service-name">${service.name}</span>
-                    <div class="status-circle ${statusClass}">${checkmark}</div>
+                    <div class="service-header">
+                        <span class="service-name">${service.name}</span>
+                        <div class="status-circle ${statusClass}">${checkmark}</div>
+                    </div>
+                    <div class="service-status-text ${statusTextClass}">${statusText}</div>
                 </div>
             `;
         }).join('');
@@ -322,6 +370,7 @@ function renderServiceList(items) {
                     <div class="car-model">${item.model || 'Veículo'}</div>
                     <div class="car-plate">${item.plate}</div>
                 </div>
+                
                 <div class="service-progress">
                     ${progressHtml}
                 </div>
@@ -377,6 +426,7 @@ function renderPromotions(promotions) {
                     ${promo.title || 'Promoção'}
                 </h4>
                 <p>${promo.description || ''}</p>
+                <p class="promo-offer">${promo.offer || ''}</p>
                 <p class="expiry-date">${formattedDate}</p>
             </div>`;
     }).join('');
@@ -496,7 +546,7 @@ async function fetchIntervalConfig() {
             const config = await response.json();
             if (config && config.value && !isNaN(parseInt(config.value, 10))) {
                 queueDisplayInterval = parseInt(config.value, 10);
-                console.log(`⏱️ Intervalo da fila: ${queueDisplayInterval / 60000} min`);
+                console.log(`⏱️ Intervalo da fila: ${queueDisplayInterval / 1000} segundos`);
             }
         }
     } catch (error) {
@@ -534,7 +584,7 @@ function startAdCycle() {
         clearTimeout(adCycleTimeout);
     }
     adCycleTimeout = setTimeout(showNextAd, queueDisplayInterval);
-    console.log(`📅 Próximo anúncio em ${queueDisplayInterval / 60000} min`);
+    console.log(`📅 Próximo anúncio em ${queueDisplayInterval / 1000} segundos.`);
 }
 
 /**
@@ -551,51 +601,45 @@ function showNextAd() {
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
     ScrollManager.pauseAll();
-    queueContainer.classList.add('fade-hidden');
+    
+    // Troca imediata para o anúncio
+    queueContainer.classList.add('hidden');
+    adContainer.innerHTML = '';
+    adContainer.classList.remove('hidden');
 
-    setTimeout(() => {
-        queueContainer.classList.add('hidden');
-        adContainer.innerHTML = '';
-        adContainer.classList.remove('hidden', 'fade-hidden');
+    let adElement;
+    if (ad.type === 'video') {
+        const video = document.createElement('video');
+        video.src = ad.url;
+        video.autoplay = true;
+        video.muted = false;
+        video.playsInline = true;
+        adElement = video;
+        
+        video.onended = hideAdAndResume;
+        adContainer.appendChild(adElement);
+        video.play().catch(error => console.error("❌ Falha ao reproduzir vídeo:", error));
 
-        let adElement;
-        if (ad.type === 'video') {
-            const video = document.createElement('video');
-            video.src = ad.url;
-            video.autoplay = true;
-            video.muted = false;
-            video.playsInline = true;
-            adElement = video;
-            
-            video.onended = hideAdAndResume;
-            adContainer.appendChild(adElement);
-            video.play().catch(error => console.error("❌ Falha ao reproduzir vídeo:", error));
+    } else {
+        const img = document.createElement('img');
+        img.src = ad.url;
+        adElement = img;
 
-        } else {
-            const img = document.createElement('img');
-            img.src = ad.url;
-            adElement = img;
-
-            const displayTime = (ad.duration || globalImageDuration) * 1000;
-            console.log(`🖼️ Exibindo imagem por ${displayTime / 1000}s`);
-            adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
-            adContainer.appendChild(adElement);
-        }
-
-    }, 400);
+        const displayTime = (ad.duration || globalImageDuration) * 1000;
+        adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
+        adContainer.appendChild(adElement);
+    }
 }
 
 /**
  * Esconde anúncio e volta à fila
  */
 function hideAdAndResume() {
-    adContainer.classList.add('fade-hidden');
-    setTimeout(() => {
-        adContainer.classList.add('hidden');
-        queueContainer.classList.remove('hidden', 'fade-hidden');
-        ScrollManager.resumeAll();
-        startAdCycle();
-    }, 400);
+    // Troca imediata de volta para a fila
+    adContainer.classList.add('hidden');
+    queueContainer.classList.remove('hidden');
+    ScrollManager.resumeAll();
+    startAdCycle();
 }
 
 // --- Inicialização ---
