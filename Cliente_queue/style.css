@@ -157,8 +157,7 @@ body {
 }
 /* --- LAYOUT DE CARDS (RF004, RF005, RF010) --- */
 
-/* --- LAYOUT DE CARDS (OTIMIZADO PARA 3 LINHAS E ATÉ 3 COLUNAS) --- */
-/* --- LAYOUT DE CARDS (RF004, RF005, RF010) - NOVO FLEXBOX COMPACTO --- */
+/* --- LAYOUT DE CARDS (RF004, RF005, RF010) - NOVO FLEXBOX COMPACTO - CORRIGIDO PARA SCROLL --- */
 .cards-container {
     display: flex;
     /* Faz os itens preencherem 3 linhas de cima para baixo e quebrar para a próxima coluna */
@@ -170,16 +169,14 @@ body {
     flex-grow: 1; 
     
     /* ESSENCIAL: Altura máxima para forçar a quebra de linha. 
-       A altura total será a soma da altura dos 3 cards + 2 gaps entre eles. 
-       (140px * 3) + (0.8rem * 2) = 420px + ~25.6px = ~445.6px. Vamos fixar em 450px. */
+       A altura total será a soma da altura dos 3 cards + 2 gaps entre eles. (Aprox. 450px) */
     height: 450px; 
     
-    /* Permite rolagem horizontal se necessário */
+    /* Permite rolagem horizontal */
     overflow-y: hidden; 
     overflow-x: auto; 
     align-content: flex-start; 
     
-    /* Removemos o padding do container, usaremos o gap do Flexbox */
     padding: 0; 
 
     /* Oculta a barra de rolagem visualmente */
@@ -197,15 +194,17 @@ body {
     transform-origin: top left;
     transition: transform 0.3s ease; 
     
-    /* Define o tamanho base de cada item na coluna, forçando a altura da linha */
+    /* CORREÇÃO CHAVE: Usar flex-basis para definir a altura da linha.
+       450px (altura total) / 3 (linhas) = 150px. Usamos 145px para acomodar o gap. */
+    flex-basis: 145px; 
     width: 350px; /* Largura base do card */
-    height: 140px; /* Altura base do card (um terço da altura do container) */
     
-    /* Removemos o padding do wrapper e voltamos ao padding interno do card */
+    /* ESSENCIAL: Não permitir que o card shrink ou cresça, forçando-o a ocupar o espaço exato
+       e permitindo que o .cards-container calcule a largura total para o scroll. */
+    flex-shrink: 0; 
+    flex-grow: 0;
+    
     padding: 0; 
-    
-    /* Define o tamanho máximo para que a quebra de linha funcione */
-    flex-basis: 180px; 
 }
 
 /* Card de Serviço em Andamento */
@@ -215,7 +214,7 @@ body {
     border-radius: 6px;
     padding: 1.2rem;
     
-    /* Deve ocupar 100% do seu wrapper de 350x140 */
+    /* Deve ocupar 100% do seu wrapper de 350x145 */
     width: 100%; 
     height: 100%; 
     min-height: 140px; 
