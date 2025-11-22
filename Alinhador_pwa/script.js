@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, addDoc, updateDoc, onSnapshot, collection, query, where, getDocs, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { registerForPushNotifications } from './push.js?v=FINAL';
 
 // =========================================================================
 // CONFIGURAÇÃO E ESTADO GLOBAL
@@ -35,9 +36,9 @@ const STATUS_REWORK = 'Em Retrabalho';
 
 // --- Coleções do Firestore ---
 const APP_ID = 'local-autocenter-app';
-const ALIGNMENT_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/alignmentQueue`;
-const SERVICE_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/serviceJobs`;
-const USERS_COLLECTION_PATH = `/artifacts/${APP_ID}/public/data/users`;
+const ALIGNMENT_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/alignmentQueue`;
+const SERVICE_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/serviceJobs`;
+const USERS_COLLECTION_PATH = `artifacts/${APP_ID}/public/data/users`;
 
 // --- Estado da Aplicação ---
 let currentUserRole = null;
@@ -56,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (!savedUser) {
         // Se não houver usuário, redireciona para a página de login central
-        window.location.href = '../auth/index.html';
+        window.location.href = 'auth.html';
         return;
     }
 
@@ -65,7 +66,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (user.role !== ALIGNER_ROLE && user.role !== MANAGER_ROLE) {
         alert('Acesso negado. Esta área é restrita para Alinhadores e Gerentes.');
         localStorage.removeItem('currentUser');
-        window.location.href = '../auth/index.html';
+        window.location.href = 'auth.html';
         return;
     }
     
@@ -76,6 +77,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Apenas continua a configuração após a autenticação bem-sucedida
         postLoginSetup(user);
+
+        // PASSO 7: Tenta registrar o usuário para receber notificações push.
+        registerForPushNotifications();
 
     } catch (error) {
         console.error("Erro na autenticação anônima com Firebase:", error);
@@ -110,7 +114,7 @@ function postLoginSetup(user) {
 
 function handleLogout() {
     localStorage.removeItem('currentUser');
-    window.location.href = '../auth/index.html';
+    window.location.href = 'auth.html';
 }
 
 // =========================================================================

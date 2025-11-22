@@ -1,0 +1,23 @@
+{
+  "name": "OutletWork",
+  "short_name": "Alinhador",
+  "gcm_sender_id": "103953800507",
+  "description": "Aplicativo para gerenciamento da fila de alinhamento da Outlet dos Pneus.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1F2937",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/icon01.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon02.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
