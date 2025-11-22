@@ -41,8 +41,8 @@ const STATUS_ALIGNMENT_FINISHED = 'Finalizado';
 let serviceJobs = [];
 let alignmentQueue = [];
 let ads = [];
-let hiddenItemIds = new Set(); // NOVO: Armazena IDs dos itens ocultos
-const SCROLL_WAIT_AT_TOP = 10 * 1000;
+let hiddenItemIds = new Set(); // Armazena IDs dos itens ocultos
+const SCROLL_WAIT_AT_TOP = 15 * 1000; // Intervalo de 15 segundos para a rolagem
 
 // --- Estado do Ciclo de Anúncios ---
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
@@ -320,60 +320,17 @@ function renderDisplay() {
 }
 
 /**
- * Renderiza a lista de serviços em andamento
- */
-/**
- * Aplica um fator de escala dinâmico aos cards para que caibam em 3 linhas.
- * O Flexbox gerencia a quebra e a rolagem horizontal, o JS apenas escala o tamanho.
- * @param {number} totalItems O número total de cards a serem exibidos.
- * @param {HTMLElement} cardsContainer O container dos cards.
- */
-function adjustServiceCardScaling(totalItems, cardsContainer) {
-    const fixedRows = 3; 
-    const maxColumnsVisible = 3; 
-    const maxItemsVisible = fixedRows * maxColumnsVisible; // 9
-
-    let scaleFactor = 1;
-    
-    // Se mais de 9 itens, o redimensionamento é acionado
-    if (totalItems > maxItemsVisible) {
-        // Quantas colunas são realmente necessárias
-        const requiredColumns = Math.ceil(totalItems / fixedRows);
-        
-        // Fator de escala: o quanto o espaço de 3 colunas precisa ser comprimido 
-        // para caber nas "requiredColumns".
-        scaleFactor = (maxColumnsVisible / requiredColumns); 
-    }
-    
-    scaleFactor = Math.min(1, scaleFactor); // Nunca aumentar
-    
-    // ATUALIZADO: Removemos a manipulação de grid-template-columns e margens.
-    // O Flexbox (com height fixo) gerencia a disposição.
-    document.querySelectorAll('.service-card-wrapper').forEach(wrapper => {
-        wrapper.style.transform = `scale(1)`;
-        
-        // Remove todos os ajustes de margem/width do Grid anterior
-        wrapper.style.width = '350px'; // Volta para o tamanho fixo para o Flexbox
-        wrapper.style.height = '140px'; // Volta para o tamanho fixo para o Flexbox
-        wrapper.style.margin = '0';
-    });
-    
-    // Não precisamos manipular cardsContainer.style aqui, pois o Flexbox é estático.
-
-    console.log(`✨ Redimensionamento (Flexbox): ${totalItems} cards. Escala: ${scaleFactor.toFixed(2)}.`);
-}
-
-/**
  * Renderiza a lista de serviços em andamento - CORRIGIDO
  */
 function renderServiceList(items) {
     const cardsContainer = document.getElementById('ongoing-services-cards');
     
-    // 1. Aplica o redimensionamento antes de renderizar
-    adjustServiceCardScaling(items.length, cardsContainer); 
+    // **REMOVIDO** a chamada para adjustServiceCardScaling
     
     if (items.length === 0) {
         cardsContainer.innerHTML = `<p style="text-align: center; padding: 2rem; width: 100%;">Nenhum veículo em atendimento.</p>`;
+        // **NOVO:** Garante que o ScrollManager pare se não houver itens
+        ScrollManager.pauseInstance(cardsContainer);
         return;
     }
     
@@ -429,11 +386,9 @@ function renderServiceList(items) {
         `;
     }).join('');
 
-    // 3. Reajusta a escala após a renderização (garantir estilos em todos os elementos)
-    adjustServiceCardScaling(items.length, cardsContainer);
+    // 3. **NOVO:** Força o ScrollManager a reiniciar após a atualização, garantindo que o scroll horizontal funcione.
+    ScrollManager.reinit(cardsContainer);
 }
-
-// ... (Restante do script.js inalterado) ...
 
 /**
  * Renderiza a lista de serviços concluídos
@@ -505,52 +460,82 @@ const ScrollManager = {
             isScrolling: false,
         };
 
+        const isHorizontal = element.classList.contains('horizontal-scroll');
+
         const startCycle = () => {
             if (instance.timeoutId) clearTimeout(instance.timeoutId);
-            if (this.isPaused || element.scrollHeight <= element.clientHeight) {
+            const scrollLength = isHorizontal ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight;
+            
+            const canScroll = scrollLength > 0;
+            if (this.isPaused || !canScroll) {
                 instance.isScrolling = false;
                 return;
             }
+            
             instance.isScrolling = true;
-            instance.timeoutId = setTimeout(scrollDown, SCROLL_WAIT_AT_TOP);
+            // Pausa no início (topo/esquerda) antes de começar a rolar
+            instance.timeoutId = setTimeout(scrollForward, SCROLL_WAIT_AT_TOP); 
         };
 
-        const scrollDown = () => {
+        const scrollForward = () => {
             if (this.isPaused) return;
-            const targetY = element.scrollHeight - element.clientHeight;
-            this.smoothScroll(element, targetY, 2000, scrollUp);
+            const duration = element.id === 'promotions-list' ? 4000 : 2000; // Rolagem mais lenta para promoções
+            const target = isHorizontal ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight;
+            this.smoothScroll(element, target, duration, scrollBackward, isHorizontal);
         };
 
-        const scrollUp = () => {
+        const scrollBackward = () => {
             if (this.isPaused) return;
+            const duration = element.id === 'promotions-list' ? 4000 : 2000; // Rolagem mais lenta para promoções
             setTimeout(() => {
-                this.smoothScroll(element, 0, 2000, startCycle);
-            }, 500);
+                this.smoothScroll(element, 0, duration, startCycle, isHorizontal);
+            }, 5000); // Aumentado para 5 segundos de pausa no final
         };
 
         instance.start = startCycle;
         this.instances.push(instance);
         instance.start();
     },
-    
+
     reinit(element) {
         const instanceIndex = this.instances.findIndex(inst => inst.element === element);
         if (instanceIndex > -1) {
             const instance = this.instances[instanceIndex];
             if (instance.timeoutId) clearTimeout(instance.timeoutId);
+            
+            // CORREÇÃO: Reseta a posição do scroll para o início (esquerda para horizontal, topo para vertical)
+            if (element.classList.contains('horizontal-scroll')) {
+                element.scrollLeft = 0;
+            } else {
+                element.scrollTop = 0;
+            }
             instance.start();
         }
     },
 
-    smoothScroll(el, to, duration, callback) {
-        const start = el.scrollTop;
+    pauseInstance(element) {
+        const instance = this.instances.find(inst => inst.element === element);
+        if (instance && instance.timeoutId) {
+            clearTimeout(instance.timeoutId);
+            instance.isScrolling = false;
+        }
+    },
+
+    smoothScroll(el, to, duration, callback, isHorizontal = false) {
+        const start = isHorizontal ? el.scrollLeft : el.scrollTop;
         const change = to - start;
         const startTime = performance.now();
 
         const animateScroll = (currentTime) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            el.scrollTop = start + change * (progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress);
+            const newPosition = start + change * (progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress);
+
+            if (isHorizontal) {
+                el.scrollLeft = newPosition;
+            } else {
+                el.scrollTop = newPosition;
+            }
 
             if (elapsed < duration) {
                 requestAnimationFrame(animateScroll);
@@ -709,7 +694,9 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDisplay = (...args) => {
         originalRender.apply(this, args);
         if (isFirstRender) {
-            document.querySelectorAll('.cards-container, #promotions-list').forEach(el => ScrollManager.init(el));
+            
+            // Inicializa todos os containers de scroll na primeira renderização
+            document.querySelectorAll('.cards-container, #promotions-list, #completed-services-cards').forEach(el => ScrollManager.init(el));
             isFirstRender = false;
         }
     };
