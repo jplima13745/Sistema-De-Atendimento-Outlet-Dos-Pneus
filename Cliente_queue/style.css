@@ -1,16 +1,16 @@
 /* --- GERAL E RESET --- */
 :root {
-    --background-color: #F8F9FA; /* Azul quase branco */
-    --primary-yellow: #FFD700; /* Amarelo da loja */
+    --background-color: #F8F9FA;
+    --primary-yellow: #FFD700;
     --dark-text: #212529;
     --light-text: #495057;
     --border-color: #DEE2E6;
     --danger-red: #DC3545;
     --success-green: #28A745;
     --in-progress-blue: #007BFF;
-    --service-alignment: #34f312; /* Laranja para Alinhamento */
-    --service-tires: #21f22b;     /* Azul para Pneus/Borracharia */
-    --service-general: #75f115;   /* Roxo para Mecânica Geral */
+    --service-alignment: #34f312;
+    --service-tires: #21f22b;
+    --service-general: #75f115;
 }
 
 * {
@@ -21,17 +21,18 @@
 
 body {
     font-family: 'Inter', sans-serif;
-    background-color: #f0f2f5; /* Fundo alterado para cinza claro (quase branco) */
-    /* Gradiente com cantos coloridos e centro branco, conforme solicitado */
+    background-color: #f0f2f5;
     background: linear-gradient(135deg, #3b85e6 15%, #ffffff 25%, #ffffff 75%, #f9d855 85%);
     color: var(--dark-text);
     overflow-x: hidden;
+    height: 100vh;
 }
 
 .dashboard-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    overflow: hidden;
 }
 
 /* --- CABEÇALHO --- */
@@ -39,37 +40,36 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 2rem;
-    background-color: #ffffff; /* Fundo branco, conforme solicitado */
+    padding: 0.8rem 2rem;
+    background-color: #ffffff;
     border-bottom: 1px solid var(--border-color);
-    border-radius: 20px; /* Bordas arredondadas em todos os cantos */
+    border-radius: 0 0 20px 20px;
+    flex-shrink: 0;
 }
 
-/* Novo contêiner para agrupar logo e título */
 .logo-container {
     display: flex;
     align-items: center;
-    gap: 1.5rem; /* Espaço entre o logo e o título */
+    gap: 1.5rem;
 }
 
 .logo-container img {
-    height: 50px; /* Altura do logo */
-    width: auto; /* Largura automática para manter a proporção */
-    border-radius: 8px; /* Bordas arredondadas para a imagem */
+    height: 50px;
+    width: auto;
+    border-radius: 8px;
 }
 
-/* Estilo para o título no cabeçalho */
 .header-title {
     font-size: 1.8rem;
     font-weight: 700;
-    color: var(--in-progress-blue); /* Cor azul para a primeira parte da frase */
+    color: var(--in-progress-blue);
     text-transform: uppercase;
 }
 
-/* CORREÇÃO: Seletor mais específico para garantir que a cor amarela seja aplicada. */
 .header-title .outlet-text {
-    color: rgb(254, 220, 31); /* Cor amarela para a palavra "OUTLET" */
+    color: rgb(254, 220, 31);
 }
+
 .datetime {
     font-size: 1.2rem;
     font-weight: 500;
@@ -87,34 +87,32 @@ body {
     padding: 1.5rem;
     gap: 1.5rem;
     overflow: hidden;
+    height: 100%;
 }
 
+/* Coluna Esquerda (Serviços) */
 .services-column {
     flex-grow: 1;
-    display: flex; /* Alterado para flex */
-    gap: 1.5rem; /* Espaçamento entre as seções */
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
     min-width: 0;
+    height: 100%;
 }
 
+/* Seção: Serviços em Andamento */
 .ongoing-services {
-    flex-grow: 1; /* Permite que esta seção cresça */
-    min-width: 0;
-}
-
-.section-card {
-    background-color: #FFF;
+    flex-grow: 1;
+    background-color: #ffffff;
+    border: 1px solid var(--in-progress-blue);
     border-radius: 8px;
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-}
-
-/* Adiciona um fundo azul claro para destacar as seções de serviço */
-.ongoing-services,
-.completed-services {
-    background-color: #ffffff; /* Azul claro para destaque */
-    border: 1px solid var(--in-progress-blue); /* Borda azul ao redor de toda a seção */
+    /* Centraliza o grid verticalmente se houver espaço sobrando */
+    justify-content: center; 
+    min-height: 0;
+    position: relative;
 }
 
 .section-header {
@@ -123,322 +121,321 @@ body {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-/* Estilo para os cabeçalhos das seções de serviço (RF - Pedido do usuário) */
-.ongoing-services .section-header,
-.completed-services .section-header {
-    background-color: var(--primary-yellow); /* Fundo amarelo da loja */
-    color: #FFF; /* Texto branco, conforme solicitado */
-    border-radius: 6px 6px 0 0;
     padding: 1rem;
-    margin: -1.5rem -1.5rem 1rem -1.5rem; /* Ajusta para preencher o topo do card */
-    border-bottom: none;
-}
-
-/* Altera a cor do cabeçalho de "Serviços em Andamento" para azul, conforme solicitado */
-.ongoing-services .section-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     background-color: var(--in-progress-blue);
-    color: #fbd230; /* Texto branco para melhor contraste com o fundo azul */
+    color: #fbd230;
+    border-radius: 6px 6px 0 0;
+    z-index: 10;
 }
 
-/* Altera a cor do cabeçalho de "Serviços Concluídos" para azul com texto amarelo, conforme solicitado */
-.completed-services .section-header {
-    background-color: var(--in-progress-blue);
-    color: var(--primary-yellow);
-}
-
-/* Altera a cor do cabeçalho de "Serviços Concluídos" para azul com texto amarelo, conforme solicitado */
-.completed-services .section-header {
-    background-color: var(--in-progress-blue);
-    color: var(--primary-yellow);
-}
-/* --- LAYOUT DE CARDS (RF004, RF005, RF010) --- */
-
-/* --- LAYOUT DE CARDS (RF004, RF005, RF010) - NOVO FLEXBOX COMPACTO - CORRIGIDO PARA SCROLL --- */
+/* --- LAYOUT DE CARDS (GRID SYSTEM) --- */
 .cards-container {
-    display: flex;
-    /* Faz os itens preencherem 3 linhas de cima para baixo e quebrar para a próxima coluna */
-    flex-flow: column wrap; 
+    display: grid;
+    /* Mantemos 3 linhas fixas, mas com altura menor pois o card agora é horizontal */
+    grid-template-rows: repeat(3, 125px);
     
-    /* Espaçamento compacto de 0.8rem entre itens */
-    gap: 0.8rem; 
+    /* Preenche coluna 1, depois coluna 2... */
+    grid-auto-flow: column;
     
-    flex-grow: 1; 
+    /* Largura mínima generosa para garantir formato Paisagem */
+    grid-auto-columns: minmax(340px, 1fr);
     
-    /* ESSENCIAL: Altura máxima para forçar a quebra de linha. 
-       A altura total será a soma da altura dos 3 cards + 2 gaps entre eles. (Aprox. 450px) */
-    height: 450px; 
+    gap: 1rem;
     
-    /* Permite rolagem horizontal */
-    overflow-y: hidden; 
-    overflow-x: auto; 
-    align-content: flex-start; 
+    margin-top: 3rem; /* Espaço para o header */
+    width: 100%;
+    height: auto;
+    max-height: 100%;
     
-    padding: 0; 
+    align-content: center; 
 
-    /* Oculta a barra de rolagem visualmente */
+    /* Scroll Horizontal */
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+    
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
 
-/* Oculta a barra de rolagem no WebKit */
 .cards-container::-webkit-scrollbar {
     display: none;
 }
 
-/* Novo container para aplicar a escala e o espaçamento entre itens */
 .service-card-wrapper {
-    transform-origin: top left;
-    transition: transform 0.3s ease; 
-    
-    /* CORREÇÃO CHAVE: Usar flex-basis para definir a altura da linha.
-       450px (altura total) / 3 (linhas) = 150px. Usamos 145px para acomodar o gap. */
-    flex-basis: 145px; 
-    width: 350px; /* Largura base do card */
-    
-    /* ESSENCIAL: Não permitir que o card shrink ou cresça, forçando-o a ocupar o espaço exato
-       e permitindo que o .cards-container calcule a largura total para o scroll. */
-    flex-shrink: 0; 
-    flex-grow: 0;
-    
-    padding: 0; 
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    display: flex; 
 }
 
-/* Card de Serviço em Andamento */
+/* --- CARD REESTRUTURADO (Title Top / Steps Bottom) --- */
 .service-card {
     background-color: var(--background-color);
     border: 1px solid var(--primary-yellow);
-    border-radius: 6px;
-    padding: 1.2rem;
+    border-radius: 8px;
+    padding: 0.5rem;
     
-    /* Deve ocupar 100% do seu wrapper de 350x145 */
-    width: 100%; 
-    height: 100%; 
-    min-height: 140px; 
+    width: 100%;
+    height: 100%;
+    
     display: flex;
-    justify-content: space-between; 
-    align-items: center; 
+    flex-direction: column; /* Organiza verticalmente: Título em cima, etapas embaixo */
+    justify-content: space-between;
+    justify-content: flex-start; /* Alinha os itens no topo */
+    
+    box-shadow: 0 3px 6px rgba(0,0,0,0.08);
 }
 
+/* Topo do Card: Informações do Carro */
 .car-info {
     display: flex;
-    flex-direction: column;
-    gap: 0.2rem; /* Leve espaçamento entre modelo e placa */
+    flex-direction: row; /* Modelo e Placa na mesma linha ou linha separada */
+    justify-content: center;
+    flex-direction: column; /* Modelo em cima, Placa embaixo */
+    justify-content: flex-start; /* Alinha à esquerda */
+    align-items: baseline;
+    gap: 0.8rem;
+    align-items: flex-start; /* Alinha os itens da coluna à esquerda */
+    gap: 0.2rem; /* Espaçamento vertical menor */
+    width: 100%;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #e0e0e0; /* Linha separadora suave */
+    margin-bottom: 0.2rem;
 }
 
-
 .service-card .car-model {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--in-progress-blue); /* Cor da loja para o modelo do carro */
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--in-progress-blue);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 65%;
+    max-width: 100%; /* Permite que o modelo ocupe toda a largura */
 }
 
 .service-card .car-plate {
-    font-size: 1rem;
+    font-size: 1.1rem;
     color: var(--light-text);
-    /* margin-top: -8px; */ /* Removido para dar mais espaço */
+    font-weight: 600;
+    background-color: #e9ecef;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
 }
 
-/* Estilo para o texto da posição na fila de alinhamento */
-.alignment-queue-position {
-    color: var(--danger-red);
-    font-weight: 700;
-    font-size: 0.9rem;
-    text-align: center;
-}
-
-/* --- Nova Seção de Progresso do Serviço --- */
+/* Parte Inferior: Etapas (Horizontal) */
 .service-progress {
     display: flex;
-    flex-direction: column;
-    gap: 0.1rem; /* Espaço mínimo entre cada item de serviço */
-    align-self: center; /* Alinha ao centro do card */
+    flex-direction: row; /* Etapas lado a lado */
+    justify-content: space-around; /* Espalha as etapas uniformemente */
+    align-items: center;
+    width: 100%;
+    flex-grow: 1;
+    gap: 0.5rem;
 }
  
+/* Cada item de progresso (Mecânico, Pneus, etc) */
 .progress-item {
     display: flex;
-    flex-direction: column; /* Organiza o conteúdo verticalmente */
-    border-bottom: 1px solid var(--border-color); /* Linha separadora */
-    padding-bottom: 0.6rem;
+    flex-direction: column; /* Nome em cima, status embaixo */
+    align-items: center;
+    justify-content: center;
+    flex: 1; /* Todos ocupam o mesmo espaço */
+    text-align: center;
+    position: relative;
 }
 
-.progress-item:last-child {
-    border-bottom: none; /* Remove a linha do último item */
+/* Linha separadora vertical entre etapas (exceto a última) */
+.progress-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 10%;
+    height: 80%;
+    width: 1px;
+    background-color: #e0e0e0;
 }
 
+/* Cabeçalho do item (Nome + Bolinha) */
 .service-header {
     display: flex;
-    justify-content: space-between;
+    flex-direction: row;
     align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: 0.2rem;
     width: 100%;
 }
 
 .progress-item .service-name {
-    font-size: 0.9rem;
-    font-weight: 500;
+    font-size: 0.85rem;
+    font-weight: 600;
     color: var(--light-text);
 }
 
+/* Status e Bolinha */
 .status-circle {
-    width: 14px; /* Tamanho reduzido, conforme solicitado */
-    height: 14px; /* Tamanho reduzido, conforme solicitado */
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    /* CORREÇÃO: A bolinha agora é amarela e pulsante por padrão (enquanto aguarda) */
     background-color: rgb(255, 217, 0);
-    border: 2px solid rgb(255, 200, 0),
-    ;
+    border: 2px solid rgb(255, 200, 0);
     animation: pulse 1.5s infinite;
-    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
-/* NOVO: Estilo para o texto de status abaixo da linha */
 .service-status-text {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 700;
     color: var(--in-progress-blue);
-    margin-top: 0.25rem;
+    white-space: nowrap;
 }
 
-/* NOVO: Deixa o texto "Em Atendimento" amarelo */
-.service-status-text.in-progress {
-    color: rgb(255, 187, 0);
-}
+.service-status-text.in-progress { color: rgb(255, 187, 0); }
+.service-status-text.in-queue { color: var(--danger-red); }
+.service-status-text.completed { color: var(--success-green); }
 
-/* NOVO: Deixa o texto da posição na fila vermelho */
-.service-status-text.in-queue {
-    color: var(--danger-red);
-}
-
-/* NOVO: Deixa o texto "Concluído" verde */
-.service-status-text.completed {
-    color: var(--success-green);
-}
-
-/* Animação de pulso para a bolinha de status */
 @keyframes pulse {
-    0%, 100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.2);
-    }
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
 }
 
-/* Estilos para a bolinha preenchida */
 .status-circle.completed {
-    background-color: var(--border-color); /* Cor padrão caso a específica não aplique */
+    background-color: var(--success-green); /* Verde direto */
     border-color: transparent;
-    color: white; /* Cor do checkmark */
-    font-weight: 900; /* Deixa o símbolo bem mais grosso */
-    font-size: 1.1rem; /* Ajusta o tamanho do símbolo */
+    color: white;
+    width: 16px; /* Um pouco maior para o check */
+    height: 16px;
+    font-size: 0.7rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    line-height: 1; /* Melhora o alinhamento vertical */
-    animation: none; /* CORREÇÃO: Remove a animação quando o serviço é concluído */
+    line-height: 1;
+    animation: none;
 }
 
-/* Cards de Serviços Concluídos (RF001) */
-.cards-container-completed {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); /* Grid super compacto */
-    gap: 0.4rem; /* Espaçamento mínimo */
-}
+/* Cores específicas para círculos concluídos */
+.status-circle.completed.tires { background-color: var(--service-tires); }
+.status-circle.completed.general { background-color: var(--service-general); }
+.status-circle.completed.alignment { background-color: var(--service-alignment); }
 
+
+/* --- Seção Serviços Concluídos (Coluna Central) --- */
 .completed-services {
-    max-width: 200px; /* Largura máxima da seção -25% */
-    min-width: 200px;
+    flex: 1 1 auto;
+    background-color: #ffffff;
+    border: 1px solid var(--in-progress-blue);
+    border-radius: 8px;
+    padding: 1.5rem;
+    min-width: 220px;
+    max-width: 220px;
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
 }
 
 .completed-services .section-header {
-    justify-content: center; /* Centraliza o título */
-}
-
-.completed-card {
-    background-color: var(--primary-yellow); /* Alterado para amarelo, conforme solicitado */
-    color: black; /* Alterado para texto azul para melhor contraste */
-    border-radius: 6px;
-    padding: 0.5rem; /* Padding aumentado */
-    min-height: 60px; /* Altura mínima aumentada */
-    text-align: center;
-    /* A largura agora é controlada pelo grid */
-    display: flex;
-    flex-direction: column;
+    position: relative;
+    top: auto; left: auto; right: auto;
+    margin: -1.5rem -1.5rem 1rem -1.5rem;
+    background-color: var(--in-progress-blue);
+    color: var(--primary-yellow);
     justify-content: center;
 }
 
+.cards-container-completed {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-auto-rows: min-content;
+    gap: 0.5rem;
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-right: 5px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.completed-card {
+    background-color: var(--primary-yellow);
+    color: black;
+    border-radius: 6px;
+    padding: 0.8rem;
+    text-align: center;
+    box-shadow: 0 2px 2px rgba(0,0,0,0.1);
+}
+
 .completed-card .car-model {
-    font-size: 1.0rem; /* Fonte aumentada */
+    font-size: 1.1rem;
     font-weight: 700;
 }
 
 .completed-card .car-plate {
-    font-size: 0.8rem; /* Fonte aumentada */
-    font-weight: 400;
+    font-size: 0.9rem;
+    font-weight: 500;
     opacity: 0.9;
 }
 
-/* --- COLUNA DE PROMOÇÕES (DIREITA) --- */
+/* --- Coluna Promoções --- */
 .promotions-column {
     display: flex;
     flex-direction: column;
-    min-width: 308px; /* Largura aumentada em 10% */
-    max-width: 308px;
-    /* O .section-card dentro desta coluna ocupará toda a altura */
+    min-width: 300px;
+    max-width: 300px;
+    height: 100%;
 }
 
-.promotions-column .section-card {
-    flex-grow: 1; /* Faz o card de promoções ocupar toda a altura da coluna */
-    min-height: 0; /* Essencial para o overflow funcionar em um contêiner flex */
-    border: 1px solid var(--in-progress-blue); /* Borda azul, conforme solicitado */
+.promotions-sidebar {
+    background-color: #FFF;
+    border-radius: 8px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+    border: 1px solid var(--in-progress-blue);
 }
 
-.promotions-column .section-header {
-    background-color: var(--in-progress-blue); /* Alterado para azul, conforme solicitado */
+.promotions-sidebar .section-header {
+    background-color: var(--in-progress-blue);
     color: #fcdb83;
-    border-radius: 6px 6px 0 0;
-    padding: 1rem;
-    margin: -1.5rem -1.5rem 1rem -1.5rem; /* Ajusta para preencher o topo do card */
-    border-bottom: none;
 }
 
 .promotions-list {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    flex-grow: 1; /* Faz a lista ocupar o espaço restante */
-    overflow-y: auto; /* Permite a rolagem programática */
-    min-height: 0; /* Essencial para o overflow em um contêiner flex */
-    /* Oculta a barra de rolagem visualmente */
-    -ms-overflow-style: none;  /* IE e Edge */
-    scrollbar-width: none;  /* Firefox */
+    flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
-/* --- Estilo para cada item de promoção --- */
 .promotion-item {
-    position: relative; /* Necessário para posicionar o pseudo-elemento */
-    padding-left: 1.25rem; /* Aumenta o recuo para compensar a nova "borda" */
-    padding-bottom: 1rem; /* Espaçamento interno inferior */
-    margin-bottom: 1rem;  /* Espaçamento externo inferior */
-    border-bottom: 1px solid #333333; /* Linha separadora em cinza escuro */
+    position: relative;
+    padding-left: 1.25rem;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #333333;
 }
 
-/* Cria a linha vermelha usando um pseudo-elemento */
 .promotion-item::before {
     content: '';
     position: absolute;
     left: 0;
     top: 0;
-    width: 4px; /* Largura da linha */
-    height: calc(100% - 1rem); /* Altura da linha (100% menos o espaçamento inferior) */
+    width: 4px;
+    height: calc(100% - 1rem);
     background-color: var(--danger-red);
-    border-radius: 2px; /* Suaviza as pontas da linha */
+    border-radius: 2px;
 }
 
-/* Remove a linha e a margem do último item para um acabamento limpo */
 .promotion-item:last-child {
     border-bottom: none;
     margin-bottom: 0;
@@ -446,60 +443,51 @@ body {
 }
 
 .promotion-item h4 {
-    font-size: 1.2rem;
-    color: #007BFF; /* Azul vibrante para o título */
-    margin-bottom: 0.6rem;
+    font-size: 1.1rem;
+    color: #007BFF;
+    margin-bottom: 0.4rem;
 }
 
 .promotion-item p {
-    margin-bottom: 0.8rem;
-    color: #267af7; /* Verde para a descrição */
-    font-weight: 1000; /* Aumenta o peso da fonte para melhor leitura */
+    margin-bottom: 0.5rem;
+    color: #267af7;
+    font-weight: 600;
+    font-size: 0.9rem;
 }
 
-/* Estilo para o preço/oferta da promoção */
 .promotion-item .promo-offer {
-    color: var(--success-green); /* Cor verde, conforme solicitado */
-    font-size: 1.3rem;
-    font-weight: 700; /* Negrito */
+    color: var(--success-green);
+    font-size: 1.2rem;
+    font-weight: 700;
 }
 
 .promotion-item .expiry-date {
-    font-weight: bold; /* Adicionado para maior destaque */
-    color: #DC3545; /* Vermelho vibrante para a data de validade */
+    font-weight: bold;
+    color: #DC3545;
     font-style: italic;
-    font-size: 0.9rem; /* Tamanho da fonte reduzido em 20% */
+    font-size: 0.8rem;
 }
 
-/* --- Container de Anúncios --- */
+/* --- Anúncios e Utilitários --- */
 #ad-container {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: #000; /* Fundo preto para destacar a mídia */
+    background-color: #000;
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100; /* Garante que fique sobre todos os outros elementos */
+    z-index: 100;
     opacity: 1;
 }
 
 #ad-container img,
 #ad-container video {
-    width: 100%; /* Força a largura a ocupar 100% da tela */
-    height: 100%; /* Força a altura a ocupar 100% da tela */
-    object-fit: cover; /* Garante que a mídia preencha o espaço, cortando o excesso se necessário */
-    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
-/* --- CLASSES DE STATUS (para JS) --- */
-.hidden {
-    display: none !important;
-}
-
-/* Cores específicas para cada serviço quando concluído */
-.status-circle.completed.tires { background-color: var(--service-tires); }
-.status-circle.completed.general { background-color: var(--service-general); }
-.status-circle.completed.alignment { background-color: var(--service-alignment); }
+.hidden { display: none !important; }

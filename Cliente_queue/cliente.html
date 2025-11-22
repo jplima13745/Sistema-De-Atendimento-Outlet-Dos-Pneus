@@ -4,17 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Outlet dos Pneus</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="icon" href="data:;base64,iVBORw0KGgo="> <!-- Corrige o erro 404 do favicon -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div id="queue-container" class="dashboard-container">
-        <!-- 1. Cabeçalho -->
         <header class="header">
             <div class="logo-container">
                 <img src="/Cliente_queue/IMG/LOGO%20OUTLET.png" alt="Outlet dos Pneus Logo">
@@ -26,53 +21,40 @@
             </div>
         </header>
 
-        <!-- 2. Corpo Principal -->
         <main class="main-body">
-            <!-- Coluna da Esquerda (Serviços) -->
             <section class="services-column">
-                <!-- Seção 1: Serviços em Andamento -->
                 <div class="section-card ongoing-services">
                     <div class="section-header">
                         <i class="fa-solid fa-wrench"></i>
                         <span>SERVIÇOS EM ANDAMENTO</span>
                     </div>
-                    <!-- O JavaScript irá inserir os cards de serviço aqui -->
                     <div id="ongoing-services-cards" class="cards-container horizontal-scroll">
-                        <!-- Exemplo de card (será gerado dinamicamente) -->
-                    </div>
+                        </div>
                 </div>
             </section>
 
-            <!-- Seção 2: Serviços Concluídos (agora como uma coluna principal) -->
             <section class="section-card completed-services">
                 <div class="section-header">
                     <i class="fa-solid fa-check-circle"></i>
                     <span>SERVIÇOS CONCLUÍDOS</span>
                 </div>
-                <!-- O JavaScript irá inserir os cards de veículos prontos aqui -->
                 <div id="completed-services-cards" class="cards-container-completed">
-                    <!-- Exemplo de card concluído (será gerado dinamicamente) -->
                 </div>
             </section>
 
-            <!-- Coluna da Direita (Promoções) -->
             <aside class="promotions-column">
                 <div class="section-card promotions-sidebar">
                     <div class="section-header">
                         <i class="fa-solid fa-tags"></i>
-                        <span>PROMOÇÕES LIMITADAS</span>
+                        <span>PROMOÇÕES</span>
                     </div>
                     <div id="promotions-list" class="promotions-list">
-                        <!-- Cards de promoção serão inseridos aqui pelo JavaScript -->
                     </div>
                 </div>
             </aside>
         </main>
     </div>
-
-    <!-- Container para Anúncios (oculto por padrão) -->
     <div id="ad-container" class="hidden"></div>
-
-    <script src="script.js" type="module"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
