@@ -6,6 +6,21 @@
     <title>Sistema de Alinhamento - Outlet dos Pneus</title>
     <!-- Carregando Tailwind CSS para manter o estilo original -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- ================= PWA LINKS ================= -->
+    <!-- Link para o Manifest -->
+    <link rel="manifest" href="manifest.json?v=2">
+    <!-- Cor do tema para a barra de status do navegador (especialmente em mobile) -->
+    <meta name="theme-color" content="#1F2937"/>
+    <!-- Script para registrar o Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').then(reg => console.log('Service worker registered.', reg));
+            });
+        }
+    </script>
+
     <!-- Link para o arquivo de estilos personalizados -->
     <link rel="stylesheet" href="style.css">
 </head>

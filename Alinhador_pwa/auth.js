@@ -27,8 +27,8 @@ const ALLOWED_MARKETING_PROFILES = [VENDEDOR_ROLE, ANALISTA_MARKETING_ROLE];
 const ALLOWED_OPERATIONAL_PROFILES = [VENDEDOR_ROLE, MANAGER_ROLE, 'mecanico', 'aligner'];
 const ALLOWED_CLIENT_PROFILES = [CLIENT_ROLE]; // NOVO
 
-const USERS_COLLECTION_PATH = `/artifacts/local-autocenter-app/public/data/users`;
-const LOG_COLLECTION_PATH = `/artifacts/local-autocenter-app/public/data/access_logs`;
+const USERS_COLLECTION_PATH = `artifacts/local-autocenter-app/public/data/users`;
+const LOG_COLLECTION_PATH = `artifacts/local-autocenter-app/public/data/access_logs`;
 
 /**
  * Registra uma tentativa de acesso no log de auditoria (RF007)
@@ -86,28 +86,28 @@ async function handleLogin(e) {
 
         // RF003: Redirecionamento baseado no perfil
         if (ALLOWED_OPERATIONAL_PROFILES.includes(user.role)) {
-            await logAccessAttempt(user.id, user.role, true, 'operacional_system');
+            // await logAccessAttempt(user.id, user.role, true, 'operacional_system'); // REMOVIDO: Será feito pelo sistema de destino
             // Redireciona para o sistema do Alinhador (index.html) se for 'aligner' ou 'manager'
             if (user.role === 'aligner' || user.role === 'manager') {
-                 window.location.href = '../Alinhador_pwa/index.html';
+                 window.location.href = 'index.html';
             } else {
                  window.location.href = '../Operacional_system/operacional.html';
             }
         } else if (ALLOWED_MARKETING_PROFILES.includes(user.role)) {
-            await logAccessAttempt(user.id, user.role, true, 'marketing_interface');
+            // await logAccessAttempt(user.id, user.role, true, 'marketing_interface'); // REMOVIDO
             window.location.href = '../marketing_interface/marketing.html';
         } else if (ALLOWED_CLIENT_PROFILES.includes(user.role)) {
-            await logAccessAttempt(user.id, user.role, true, 'Cliente_queue');
+            // await logAccessAttempt(user.id, user.role, true, 'Cliente_queue'); // REMOVIDO
             await signInAnonymously(auth); // Garante permissão de leitura para a tela do cliente
             window.location.href = '../Cliente_queue/cliente.html';
         } else {
             // RF002: Bloqueia perfis não autorizados
-            await logAccessAttempt(user.id, user.role, false, 'any');
+            // await logAccessAttempt(user.id, user.role, false, 'any'); // REMOVIDO
             errorElement.textContent = 'Seu perfil não tem permissão para acessar nenhum sistema.';
             localStorage.removeItem('currentUser'); // Limpa a sessão inválida
         }
     } else {
-        await logAccessAttempt(username, 'desconhecido', false, 'any');
+        // await logAccessAttempt(username, 'desconhecido', false, 'any'); // REMOVIDO: Causa erro de permissão para usuários não autenticados.
         errorElement.textContent = 'Credenciais inválidas.';
     }
 }
@@ -117,8 +117,17 @@ async function handleLogin(e) {
 // Limpa qualquer sessão antiga ao carregar a página de login
 localStorage.removeItem('currentUser');
 
+// Adiciona o listener ao formulário
 document.getElementById('login-form').addEventListener('submit', handleLogin);
 
-// Garante que o usuário gerente exista no banco de dados para o login funcionar.
-const managerUserRef = doc(db, USERS_COLLECTION_PATH, 'gerente.outlet');
-setDoc(managerUserRef, { username: 'gerente.outlet', password: 'gerenteitapoa', role: 'manager' }, { merge: true });
+// Garante que o app tenha permissões de leitura assim que a página carregar.
+// Isso resolve o problema de "corrida" após limpar o cache.
+(async () => {
+    try {
+        await signInAnonymously(auth);
+        console.log('Sessão anônima estabelecida na inicialização da página.');
+    } catch (error) {
+        console.error('Falha ao estabelecer sessão anônima na inicialização:', error);
+        document.getElementById('login-error').textContent = 'Falha ao conectar com o servidor.';
+    }
+})();
