@@ -479,7 +479,7 @@ const ScrollManager = {
 
         const scrollForward = () => {
             if (this.isPaused) return;
-            const duration = element.id === 'promotions-list' ? 4000 : 2000; // Rolagem mais lenta para promoções
+            const duration = element.id === 'promotions-list' ? 4000 : 4000; // Rolagem mais lenta para promoções
             const target = isHorizontal ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight;
             this.smoothScroll(element, target, duration, scrollBackward, isHorizontal);
         };
