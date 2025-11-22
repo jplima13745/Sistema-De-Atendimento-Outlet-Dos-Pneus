@@ -38,7 +38,8 @@ let serviceJobs = [];
 let alignmentQueue = [];
 let ads = [];
 let hiddenItemIds = new Set();
-const SCROLL_WAIT_AT_TOP = 15 * 1000; 
+const PROMOTIONS_SCROLL_WAIT = 15 * 1000; // Tempo de espera para o scroll de promoções
+const ONGOING_SERVICES_SCROLL_WAIT = 25 * 1000; // Tempo de espera para o scroll de serviços em andamento
 
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
 let adCycleTimeout = null;
@@ -308,7 +309,11 @@ const ScrollManager = {
                 return;
             }
             instance.isScrolling = true;
-            instance.timeoutId = setTimeout(scrollForward, SCROLL_WAIT_AT_TOP); 
+
+            // Usa a constante de tempo correta baseada no ID do elemento
+            const waitTime = element.id === 'ongoing-services-cards' ? ONGOING_SERVICES_SCROLL_WAIT : PROMOTIONS_SCROLL_WAIT;
+
+            instance.timeoutId = setTimeout(scrollForward, waitTime); 
         };
         const scrollForward = () => {
             if (this.isPaused) return;
