@@ -350,7 +350,7 @@ function adjustServiceCardScaling(totalItems, cardsContainer) {
     // ATUALIZADO: Removemos a manipulação de grid-template-columns e margens.
     // O Flexbox (com height fixo) gerencia a disposição.
     document.querySelectorAll('.service-card-wrapper').forEach(wrapper => {
-        wrapper.style.transform = `scale(${scaleFactor})`;
+        wrapper.style.transform = `scale(1)`;
         
         // Remove todos os ajustes de margem/width do Grid anterior
         wrapper.style.width = '350px'; // Volta para o tamanho fixo para o Flexbox
