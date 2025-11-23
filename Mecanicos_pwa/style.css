@@ -6,7 +6,7 @@ body {
     justify-content: center;
     align-items: flex-start;
     min-height: 100vh;
-    padding: 20px;
+    padding: 20px; /* Padding padrão para telas maiores (desktop) */
 }
 
 /* Container principal da aplicação */
@@ -16,7 +16,7 @@ body {
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* Sombra suave */
     max-width: 1400px; /* Largura máxima */
     width: 95%; /* Ocupa 95% da tela até o máximo */
-    min-height: 700px; /* Altura mínima */
+    min-height: 700px;
     overflow: hidden; /* Garante que o conteúdo não vaze das bordas arredondadas */
 }
 
@@ -26,4 +26,18 @@ body {
 
 .tab-content.active {
     display: block;
+}
+
+/* --- AJUSTES PARA DISPOSITIVOS MÓVEIS --- */
+/* Em telas com largura máxima de 640px (padrão 'sm' do Tailwind) */
+@media (max-width: 640px) {
+    body {
+        padding: 0; /* Remove o padding externo no celular */
+    }
+
+    .app-container {
+        width: 100%; /* Faz o container ocupar a largura total */
+        border-radius: 0; /* Remove as bordas arredondadas para um visual de tela cheia */
+        box-shadow: none; /* Remove a sombra no modo de tela cheia */
+    }
 }

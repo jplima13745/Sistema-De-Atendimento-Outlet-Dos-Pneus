@@ -6,6 +6,10 @@
     <title>PWA Mecânicos - Outlet</title>
     <!-- Carregando Tailwind CSS para estilização -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Link para o Manifest e configuração do tema -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4A90E2">
+
     <!-- Carregando Font Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
     <!-- Link para o arquivo CSS local -->
@@ -17,20 +21,21 @@
         <!-- CONTEÚDO PRINCIPAL (Exibido apenas após Login) -->
         <div id="main-content" class="flex-grow flex flex-col hidden">
             <!-- Cabeçalho -->
-            <header class="p-6 bg-blue-900 text-white rounded-t-xl flex justify-between items-center">
-                <h1 class="text-3xl font-bold">Minha Fila <span class="text-yellow-400">Mecânico</span></h1>
-                <div class="flex items-center space-x-4">
+            <header class="p-4 sm:p-6 bg-blue-900 text-white sm:rounded-t-xl flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-0">
+                <h1 class="text-2xl sm:text-3xl font-bold text-center sm:text-left">Minha Fila <span class="text-yellow-400">Mecânico</span></h1>
+                <div class="flex items-center justify-center space-x-4">
                     <p id="user-info" class="text-sm mt-1 text-gray-400"></p>
+                    <button id="install-button" class="hidden text-sm font-medium py-1 px-3 bg-green-600 hover:bg-green-700 rounded-lg transition duration-150">Instalar App</button>
                     <button onclick="handleLogout()" class="text-sm font-medium py-1 px-3 bg-red-600 hover:bg-red-700 rounded-lg transition duration-150">Sair</button>
                 </div>
             </header>
 
             <!-- Conteúdo Principal -->
-            <main class="flex-grow p-8 overflow-auto">
+            <main class="flex-grow p-4 sm:p-8 overflow-auto">
                 <!-- Visão Exclusiva do Mecânico -->
                 <div id="mechanic-view" class="tab-content active">
                     <!-- O conteúdo da fila do mecânico será renderizado aqui pelo script.js -->
-                     <div class="text-center p-10 bg-white rounded-lg shadow-md border">
+                     <div class="text-center p-4 sm:p-10 bg-white rounded-lg shadow-md border">
                         <p class="text-lg font-medium text-gray-700">Carregando sua fila de serviços...</p>
                     </div>
                 </div>

@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, updateDoc, onSnapshot, collection, query, where, getDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+import { initializePushNotifications } from './push.js';
 // =========================================================================
 // CONFIGURAÇÃO FIREBASE
 // =========================================================================
@@ -90,11 +91,8 @@ function devLogin() {
 }
 
 function initializeAppAndAuth() {
-    // Primeiro, tenta criar o usuário de desenvolvimento se necessário.
-    devLogin();
-
-    // AGORA, lê o localStorage DEPOIS que o devLogin teve a chance de rodar.
-    let savedUser = localStorage.getItem('currentUser');
+    // Verifica se há um usuário salvo no armazenamento local.
+    const savedUser = localStorage.getItem('currentUser');
     if (!savedUser) {
         window.location.href = 'auth.html'; // Redireciona para a página de login local
         return;
@@ -308,3 +306,38 @@ function setupRealtimeListeners() {
 // INICIALIZAÇÃO
 // =========================================================================
 initializeAppAndAuth();
+
+// =========================================================================
+// LÓGICA DE INSTALAÇÃO DO PWA (PASSO 16)
+// =========================================================================
+let deferredPrompt; // Variável para guardar o evento de instalação
+const installButton = document.getElementById('install-button');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Previne que o mini-infobar padrão do Chrome apareça
+    e.preventDefault();
+    // Guarda o evento para que possa ser disparado depois
+    deferredPrompt = e;
+    // Mostra nosso botão de instalação personalizado
+    installButton.classList.remove('hidden');
+    console.log('PWA está pronto para ser instalado.');
+});
+
+installButton.addEventListener('click', async () => {
+    if (!deferredPrompt) {
+        console.log('O evento de instalação não está disponível.');
+        return;
+    }
+    // Mostra o prompt de instalação do navegador
+    deferredPrompt.prompt();
+    // Espera pela escolha do usuário
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`Resultado da instalação: ${outcome}`);
+    // Limpa o evento, pois ele só pode ser usado uma vez.
+    deferredPrompt = null;
+    // Esconde o botão após a tentativa de instalação
+    installButton.classList.add('hidden');
+});
+
+// Inicializa o Service Worker e as notificações Push
+initializePushNotifications();

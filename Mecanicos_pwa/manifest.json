@@ -1,0 +1,21 @@
+{
+  "name": "Sistema de Atendimento - Mecânicos",
+  "short_name": "Mecânicos",
+  "description": "Aplicativo para mecânicos do sistema de atendimento da Outlet dos Pneus.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#4A90E2",
+  "icons": [
+    {
+      "src": "icons/icon01.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon02.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
