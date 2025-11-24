@@ -1,2 +1,13 @@
-Alinhador_pwa/push-backend/serviceAccountKey.json
-Mecanicos_pwa/push-backend/serviceAccountKey.json
+# Dependências (Pesado, não subir!)
+node_modules/
+*/node_modules/
+
+# Logs e arquivos de sistema
+*.log
+.DS_Store
+Thumbs.db
+
+# Arquivos de ambiente e cache do Firebase
+.firebase/
+firebase-debug.log*
+ui-debug.log*
