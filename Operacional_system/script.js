@@ -155,8 +155,7 @@ function postLoginSetup(user) {
     localStorage.setItem('currentUser', JSON.stringify(user));
     document.getElementById('user-info').textContent = `Usuário: ${username} | Cargo: ${role.toUpperCase()}`;
 
-    const mechanicTitle = MECHANICS.join(', ');
-    document.getElementById('mechanic-list-title').textContent = mechanicTitle;
+    // O título agora é estático no HTML, não precisa mais ser definido aqui.
 
     const tabServicos = document.getElementById('tab-servicos');
     const tabAlinhamento = document.getElementById('tab-alinhamento');
@@ -223,9 +222,7 @@ function postLoginSetup(user) {
         // para o vendedor na inicialização. A função renderMechanicsManagement
         // é chamada mais abaixo, mas a lista de títulos precisa ser
         // atualizada aqui para a primeira renderização.
-        const mechanicTitle = MECHANICS.join(', ');
-        document.getElementById('mechanic-list-title').textContent = mechanicTitle;
-
+        // O título agora é estático no HTML.
 
     } else if (role === MECANICO_ROLE) { // **CORREÇÃO:** Restaurando a visão do mecânico.
         mainNav.classList.add('hidden'); // Esconde a navegação principal
@@ -400,8 +397,7 @@ function renderMechanicsManagement() {
 
     MECHANICS = mecanicosGeral.map(u => u.username); // Atualiza a lista de mecânicos
 
-    const mechanicTitle = MECHANICS.join(', ');
-    document.getElementById('mechanic-list-title').textContent = mechanicTitle;
+    // O título agora é estático no HTML, não precisa mais ser definido aqui.
 
     let optionsHTML = '<option value="">-- Automático --</option>';
     optionsHTML += MECHANICS.map(m => `<option value="${m}">${m}</option>`).join('');
