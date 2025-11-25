@@ -414,32 +414,68 @@ function startAdCycle() {
     adCycleTimeout = setTimeout(showNextAd, queueDisplayInterval);
 }
 
+// Substitua a função showNextAd atual por esta:
 function showNextAd() {
-    if (ads.length === 0) {
-        adCycleTimeout = setTimeout(startAdCycle, 30000);
+    // Se não houver anúncios, tenta de novo em 30s
+    if (!ads || ads.length === 0) {
+        // Tenta buscar novamente caso a lista esteja vazia por erro anterior
+        fetchAds().then(() => {
+            adCycleTimeout = setTimeout(startAdCycle, 30000);
+        });
         return;
     }
+
+    // --- CORREÇÃO DE SEGURANÇA ---
+    // Se a lista diminuiu e o índice atual ficou fora do limite, reseta para 0
+    if (currentAdIndex >= ads.length) {
+        currentAdIndex = 0;
+    }
+    // -----------------------------
+
     const ad = ads[currentAdIndex];
+    
+    // Prepara o índice para a próxima vez
     currentAdIndex = (currentAdIndex + 1) % ads.length;
+
     ScrollManager.pauseAll();
     queueContainer.classList.add('hidden');
+    
     adContainer.innerHTML = '';
     adContainer.classList.remove('hidden');
+
     if (ad.type === 'video') {
         const video = document.createElement('video');
         video.src = ad.url;
         video.autoplay = true;
-        video.muted = false;
+        video.muted = false; // Garanta que o navegador permita som (geralmente requer interação do usuário antes)
         video.playsInline = true;
         video.onended = hideAdAndResume;
+        
+        // Tratamento de erro caso o vídeo falhe ao carregar
+        video.onerror = () => {
+            console.error("Erro ao reproduzir vídeo", ad.url);
+            hideAdAndResume();
+        };
+
         adContainer.appendChild(video);
-        video.play().catch(console.error);
+        video.play().catch(e => {
+            console.error(e);
+            // Se o autoplay falhar, pula o anúncio
+            hideAdAndResume();
+        });
     } else {
         const img = document.createElement('img');
         img.src = ad.url;
+        img.onload = () => {
+            // Só inicia o timer quando a imagem carregar
+            const displayTime = (ad.duration || globalImageDuration) * 1000;
+            adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
+        };
+        img.onerror = () => {
+            console.error("Erro ao carregar imagem", ad.url);
+            hideAdAndResume();
+        };
         adContainer.appendChild(img);
-        const displayTime = (ad.duration || globalImageDuration) * 1000;
-        adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
     }
 }
 
@@ -447,6 +483,11 @@ function hideAdAndResume() {
     adContainer.classList.add('hidden');
     queueContainer.classList.remove('hidden');
     ScrollManager.resumeAll();
+
+    fetchAds().then(() => {
+            console.log("Lista de anúncios atualizada.");
+        }).catch(console.error);
+
     startAdCycle();
 }
 
