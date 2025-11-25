@@ -2687,6 +2687,18 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 });
             });
 
+            // CORREÇÃO: Adiciona os serviços de alinhamento perdidos ao histórico de perdas.
+            // A contagem no resumo já estava correta, mas a lista do histórico não os incluía.
+            const lostAlignmentsToday = alignmentQueue.filter(a => a.status === STATUS_LOST && periodFilterFn(a.finalizedAt));
+            lostAlignmentsToday.forEach(job => {
+                lostHistoryList.push({
+                    car: `${job.licensePlate} (${job.carModel || 'N/A'})`,
+                    vendedor: job.vendedorName,
+                    etapa: 'Fila de Alinhamento' // Define a etapa da perda para alinhamentos.
+                });
+            });
+
+
             // Processa Alinhamentos Manuais (que não têm serviceJobId)
             finalizedAlignmentsToday.filter(c => c.status === STATUS_FINALIZED).forEach(car => {
                 if (car.serviceJobId) return; // Já foi processado acima
