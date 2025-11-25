@@ -1,102 +1,105 @@
-// Aumentei para v8 para forçar a atualização imediata e limpar o cache antigo
-const CACHE_NAME = 'fila-alinhamento-cache-v8';
+const CACHE_NAME = "alinhador-pwa-cache";
 
-const urlsToCache = [
+// Arquivos para salvar no celular/pc
+const localUrlsToCache = [
   '/',
   'index.html',
+  'auth.html',
   'style.css',
   'script.js',
   'auth.js',
   'push.js',
-  'auth.html',
   'manifest.json',
   'icons/icon01.png',
   'icons/icon02.png',
-  'sounds/notify.mp3'
+  'sounds/notify.mp3' // O arquivo PRECISA estar aqui para tocar offline/background
 ];
 
-// =========================================================================
-// INSTALAÇÃO: Cacheia os arquivos iniciais
-// =========================================================================
+const externalUrlsToCache = [
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap'
+];
+
+// 1. INSTALAÇÃO
 self.addEventListener('install', event => {
-  console.log('Service Worker: Instalando...');
-  self.skipWaiting(); // Força a instalação imediata
+  console.log('Service Worker: Instalando e baixando recursos...');
+  self.skipWaiting(); // Força a atualização imediata
+  
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Service Worker: Cache aberto.');
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then(cache => {
+      // Cacheia externos (sem travar se falhar)
+      externalUrlsToCache.forEach(url => {
+        const request = new Request(url, { mode: 'no-cors' });
+        fetch(request).then(response => cache.put(request, response)).catch(e => {});
+      });
+      // Cacheia locais (crítico)
+      return cache.addAll(localUrlsToCache);
+    })
   );
 });
 
-// =========================================================================
-// ATIVAÇÃO E LIMPEZA (IGUAL AOS MECÂNICOS)
-// =========================================================================
+// 2. ATIVAÇÃO (Limpeza)
 self.addEventListener('activate', event => {
-  console.log('Service Worker: Ativando...');
+  console.log('Service Worker: Ativo e pronto.');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cache => {
-          // Se o cache não for o da versão atual (v8), deleta!
           if (cache !== CACHE_NAME) {
-            console.log('Service Worker: Limpando cache antigo:', cache);
             return caches.delete(cache);
           }
         })
       );
     })
   );
-  return self.clients.claim(); // Assume o controle das páginas imediatamente
+  return self.clients.claim();
 });
 
-// =========================================================================
-// INTERCEPTAÇÃO DE REDE (Cache First)
-// =========================================================================
+// 3. FETCH (Intercepta redes)
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Retorna do cache se existir, senão busca na rede
-        return response || fetch(event.request);
-      })
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request);
+    })
   );
 });
 
-// =========================================================================
-// PUSH NOTIFICATION (COM SOM ALTO)
-// =========================================================================
+// 4. PUSH (Onde a mágica acontece em Background)
 self.addEventListener('push', event => {
-  console.log('Service Worker: Push recebido.');
-  
+  console.log('🔔 Service Worker: Push recebido em background!');
+
   let data = {};
-  if (event.data) {
-    try {
-      const json = event.data.json();
-      data = json.notification || json; 
-    } catch (e) {
-      console.error('Erro ao ler JSON do push:', e);
-      data = { title: 'Alinhamento', body: event.data.text() };
-    }
+  try {
+    const json = event.data.json();
+    data = json.notification || json;
+  } catch (e) {
+    data = { title: 'Nova Atividade', body: 'Verifique o painel.' };
   }
 
-  const title = data.title || 'Nova Notificação';
   const options = {
     body: data.body,
-    icon: 'icons/icon-192x192.png',
-    badge: 'icons/icon01.png',
-    vibrate: [200, 100, 200, 100, 200, 100, 500], // Vibração bem longa para chamar atenção
-    tag: 'alinhamento-notification',
-    renotify: true,
-    data: { url: '/' },
-    sound: 'sounds/notify.mp3' // Fallback
+    icon: 'icons/icon01.png',
+    badge: 'icons/icon02.png',
+    
+    // --- CONFIGURAÇÕES PARA FORÇAR SOM/ATENÇÃO ---
+    sound: 'sounds/notify.mp3', // Tenta tocar o som customizado (funciona bem no Desktop)
+    vibrate: [500, 200, 500],   // Vibração agressiva para celular (meio segundo, pausa, meio segundo)
+    tag: 'autocenter-alert',    // Agrupa notificações
+    renotify: true,             // IMPORTANTE: Faz tocar som de novo mesmo se já tiver uma notificação antiga lá
+    requireInteraction: true,   // A notificação não some sozinha, obriga o usuário a olhar
+    silent: false,              // Garante que não é silenciosa
+    
+    // Ações (Botão na notificação)
+    actions: [
+      { action: 'open', title: '👀 Ver Agora' }
+    ]
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    // 1. Mostra a notificação do sistema (Windows/Android assume aqui)
+    self.registration.showNotification(data.title, options)
     .then(() => {
-        // Manda o sinal para a página tocar o áudio via HTML5 (Ouvido pelo script.js)
+        // 2. Tenta avisar a aba aberta (se houver) para tocar o som via JS também
         return self.clients.matchAll({type: 'window', includeUncontrolled: true});
     })
     .then(clients => {
@@ -107,15 +110,22 @@ self.addEventListener('push', event => {
   );
 });
 
+// 5. CLIQUE NA NOTIFICAÇÃO
 self.addEventListener('notificationclick', event => {
-  console.log('Service Worker: Notificação clicada.');
   event.notification.close();
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      // Se já tem aba aberta, foca nela
       for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) return client.focus();
+        if (client.url.includes('index.html') && 'focus' in client) {
+          return client.focus();
+        }
       }
-      if (clients.openWindow) return clients.openWindow('/');
+      // Senão, abre uma nova
+      if (clients.openWindow) {
+        return clients.openWindow('index.html');
+      }
     })
   );
 });

@@ -1,6 +1,6 @@
-const CACHE_NAME = 'mecanicos-pwa-cache-v2'; // Atualizei a versão para garantir a recarga
+const CACHE_NAME = 'mecanico-pwa-cache'; // Subi a versão para forçar atualização
 
-// Separa os recursos locais dos externos
+// Arquivos para salvar no celular/pc
 const localUrlsToCache = [
   '/',
   'index.html',
@@ -12,7 +12,7 @@ const localUrlsToCache = [
   'manifest.json',
   'icons/icon01.png',
   'icons/icon02.png',
-  'sounds/notify.mp3'
+  'sounds/notify.mp3' // O arquivo PRECISA estar aqui para tocar offline/background
 ];
 
 const externalUrlsToCache = [
@@ -20,128 +20,111 @@ const externalUrlsToCache = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap'
 ];
 
-// Evento de Instalação: Salva os arquivos estáticos no cache.
+// 1. INSTALAÇÃO
 self.addEventListener('install', event => {
-  console.log('Service Worker: Instalando...');
+  console.log('Service Worker: Instalando e baixando recursos...');
+  self.skipWaiting(); // Força a atualização imediata
+  
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Service Worker: Cache aberto.');
-        
-        // 1. Cacheia os recursos locais
-        const localCachePromise = cache.addAll(localUrlsToCache);
-
-        // 2. Cacheia os recursos externos com o modo 'no-cors'
-        const externalCachePromises = externalUrlsToCache.map(url => {
-          const request = new Request(url, { mode: 'no-cors' });
-          return fetch(request).then(response => cache.put(request, response));
-        });
-
-        // Aguarda todas as operações de cache terminarem
-        return Promise.all([localCachePromise, ...externalCachePromises]);
-      })
-      .then(() => self.skipWaiting()) // Força o novo service worker a se tornar ativo imediatamente.
+    caches.open(CACHE_NAME).then(cache => {
+      // Cacheia externos (sem travar se falhar)
+      externalUrlsToCache.forEach(url => {
+        const request = new Request(url, { mode: 'no-cors' });
+        fetch(request).then(response => cache.put(request, response)).catch(e => {});
+      });
+      // Cacheia locais (crítico)
+      return cache.addAll(localUrlsToCache);
+    })
   );
 });
 
-// Evento de Ativação: Limpa caches antigos.
+// 2. ATIVAÇÃO (Limpeza)
 self.addEventListener('activate', event => {
-  console.log('Service Worker: Ativando...');
+  console.log('Service Worker: Ativo e pronto.');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cache => {
           if (cache !== CACHE_NAME) {
-            console.log('Service Worker: Limpando cache antigo:', cache);
             return caches.delete(cache);
           }
         })
       );
     })
   );
-  return self.clients.claim(); // Torna-se o controlador para todos os clientes no escopo.
+  return self.clients.claim();
 });
 
-// Evento de Fetch: Responde com os dados do cache ou busca na rede.
+// 3. FETCH (Intercepta redes)
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Se o recurso estiver no cache, retorna ele. Senão, busca na rede.
-        return response || fetch(event.request);
-      })
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request);
+    })
   );
 });
 
-// Evento de Push: Recebe a notificação do servidor e a exibe.
+// 4. PUSH (Onde a mágica acontece em Background)
 self.addEventListener('push', event => {
-  console.log('Service Worker: Notificação push recebida.');
+  console.log('🔔 Service Worker: Push recebido em background!');
 
-  let notificationData = {};
+  let data = {};
   try {
-    // O backend envia { notification: { ... } } ou direto { title: ... }
     const json = event.data.json();
-    notificationData = json.notification || json;
+    data = json.notification || json;
   } catch (e) {
-    console.error('Erro ao parsear dados da notificação:', e);
-    notificationData = {
-      title: 'Nova Notificação',
-      body: 'Você tem uma nova mensagem.',
-      icon: 'icons/icon01.png'
-    };
+    data = { title: 'Nova Atividade', body: 'Verifique o painel.' };
   }
 
-  const title = notificationData.title;
   const options = {
-    body: notificationData.body,
-    icon: notificationData.icon || 'icons/icon01.png',
+    body: data.body,
+    icon: 'icons/icon01.png',
     badge: 'icons/icon02.png',
-    data: notificationData.data,
-    // Mantemos 'sound' como fallback para navegadores que suportam
-    sound: 'sounds/notify.mp3',  
-    vibrate: [200, 100, 200],
-    requireInteraction: true,
-    tag: 'mechanic-notification', // Evita pilhas de notificações repetidas
-    renotify: true
+    
+    // --- CONFIGURAÇÕES PARA FORÇAR SOM/ATENÇÃO ---
+    sound: 'sounds/notify.mp3', // Tenta tocar o som customizado (funciona bem no Desktop)
+    vibrate: [500, 200, 500],   // Vibração agressiva para celular (meio segundo, pausa, meio segundo)
+    tag: 'autocenter-alert',    // Agrupa notificações
+    renotify: true,             // IMPORTANTE: Faz tocar som de novo mesmo se já tiver uma notificação antiga lá
+    requireInteraction: true,   // A notificação não some sozinha, obriga o usuário a olhar
+    silent: false,              // Garante que não é silenciosa
+    
+    // Ações (Botão na notificação)
+    actions: [
+      { action: 'open', title: '👀 Ver Agora' }
+    ]
   };
 
-  // AQUI ESTÁ A CORREÇÃO DO SOM:
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    // 1. Mostra a notificação do sistema (Windows/Android assume aqui)
+    self.registration.showNotification(data.title, options)
     .then(() => {
-        // Tenta encontrar as janelas abertas deste PWA
+        // 2. Tenta avisar a aba aberta (se houver) para tocar o som via JS também
         return self.clients.matchAll({type: 'window', includeUncontrolled: true});
     })
     .then(clients => {
-        // Se houver janelas abertas, manda ordem para tocar o som via JS
         if (clients && clients.length) {
             clients.forEach(client => client.postMessage({ type: 'PLAY_SOUND' }));
         }
     })
-    .catch(err => console.error('Erro ao exibir notificação:', err))
   );
 });
 
-// Evento de Clique na Notificação: Abre o PWA quando o usuário clica.
+// 5. CLIQUE NA NOTIFICAÇÃO
 self.addEventListener('notificationclick', event => {
-  console.log('Service Worker: Clique na notificação recebido.');
-
-  // Fecha a notificação
   event.notification.close();
 
-  // Abre a janela do aplicativo
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      // Se uma janela do PWA já estiver aberta, foca nela.
+      // Se já tem aba aberta, foca nela
       for (const client of clientList) {
-        if ('focus' in client) {
+        if (client.url.includes('index.html') && 'focus' in client) {
           return client.focus();
         }
       }
-      // Se nenhuma janela estiver aberta, abre uma nova.
+      // Senão, abre uma nova
       if (clients.openWindow) {
-        const urlToOpen = event.notification.data?.url || '/';
-        return clients.openWindow(urlToOpen);
+        return clients.openWindow('index.html');
       }
     })
   );
