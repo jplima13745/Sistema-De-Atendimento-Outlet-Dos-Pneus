@@ -2606,13 +2606,11 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                 // --- Cálculo de Duração por Etapa (Req 5.3) ---
                 const waitTimeMs = calculateDuration(job.timestamp, job.gsStartedAt);
                 const gsDurationMs = calculateDuration(job.gsStartedAt, job.gsFinishedAt);
-                const tsDurationMs = calculateDuration(job.tsStartedAt, job.tsFinishedAt);
                 if (waitTimeMs > 0) allWaitTimes.push(waitTimeMs);
-                // CORREÇÃO: Garante que a etapa seja contada mesmo se a duração for 0.
-                // Apenas durações positivas são usadas para calcular a média.
-                if (job.gsFinishedAt) {
-                    allGsDurations.push(gsDurationMs > 0 ? gsDurationMs : 0);
-                }
+
+                // CORREÇÃO: Garante que a etapa de Serviço Geral seja sempre contada para cada serviço finalizado.
+                // A duração é usada para a média, mas a contagem (push) é incondicional.
+                allGsDurations.push(gsDurationMs > 0 ? gsDurationMs : 0);
 
                 // Adiciona stats do Mecânico Geral
                 if (mechanicStats[mechanic]) {
@@ -2629,6 +2627,12 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
                     // então contamos apenas a ocorrência e a duração se disponível.
                     if (mechanicStats[TIRE_SHOP_MECHANIC]) {
                         mechanicStats[TIRE_SHOP_MECHANIC].count++;
+                    }
+                    // CORREÇÃO: Garante que a etapa de borracharia seja contada, mesmo com duração zero.
+                    // Apenas durações positivas são usadas para calcular a média.
+                    const tsDurationMs = calculateDuration(job.tsStartedAt, job.tsFinishedAt);
+                    if (job.tsFinishedAt) {
+                        allTsDurations.push(tsDurationMs > 0 ? tsDurationMs : 0);
                     }
                 }
 
