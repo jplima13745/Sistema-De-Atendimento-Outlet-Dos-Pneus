@@ -35,6 +35,32 @@ if (isCanvasEnvironment && typeof __firebase_config !== 'undefined') {
 }
 
 // =========================================================================
+// ÁUDIO GLOBAL (FIX PARA MOBILE/CHROME)
+// =========================================================================
+const notificationSound = new Audio('sounds/notify.mp3');
+let audioUnlocked = false;
+
+// Função para desbloquear o áudio na primeira interação
+function unlockAudio() {
+    if (audioUnlocked) return;
+    
+    notificationSound.volume = 0.1; // Volume mínimo
+    notificationSound.play().then(() => {
+        notificationSound.pause();
+        notificationSound.currentTime = 0;
+        audioUnlocked = true;
+        notificationSound.volume = 1.0; // Restaura volume máximo
+        console.log("🔊 Áudio desbloqueado pelo usuário!");
+    }).catch(e => {
+        console.warn("Ainda não foi possível desbloquear o áudio:", e);
+    });
+}
+
+// Adiciona os ouvintes para desbloqueio imediato
+document.body.addEventListener('click', unlockAudio, { once: true });
+document.body.addEventListener('touchstart', unlockAudio, { once: true });
+
+// =========================================================================
 // INICIALIZAÇÃO E AUTENTICAÇÃO
 // =========================================================================
 let db;
@@ -82,18 +108,14 @@ window.handleLogout = function() {
     window.location.href = 'auth.html';
 }
 
-/**
- * NOVO: Simulador de login para ambiente de desenvolvimento.
- */
-function devLogin() {
-    if (!isCanvasEnvironment && !localStorage.getItem('currentUser')) {
-        console.warn("MODO DE DESENVOLVIMENTO: Logando como usuário 'Mecânico Teste'.");
-        const devUser = { username: 'Mecânico Teste', role: 'mecanico' };
-        localStorage.setItem('currentUser', JSON.stringify(devUser));
-    }
-}
-
 function initializeAppAndAuth() {
+    // Tenta registrar o SW logo no início para garantir
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+            .then(reg => console.log("✅ SW registrado na inicialização:", reg.scope))
+            .catch(err => console.error("❌ Falha ao registrar SW na inicialização:", err));
+    }
+
     // Verifica se há um usuário salvo no armazenamento local.
     const savedUser = localStorage.getItem('currentUser');
     if (!savedUser) {
@@ -163,18 +185,21 @@ async function markServiceReady(docId, serviceType) {
 // MODAL DE CONFIRMAÇÃO
 // =========================================================================
 
-document.getElementById("confirm-button").addEventListener("click", () => {
-    const { id, confirmAction, serviceType } = currentJobToConfirm;
-    if (!id || !confirmAction) {
-        hideConfirmationModal();
-        return;
-    }
+const confirmBtn = document.getElementById("confirm-button");
+if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+        const { id, confirmAction, serviceType } = currentJobToConfirm;
+        if (!id || !confirmAction) {
+            hideConfirmationModal();
+            return;
+        }
 
-    if (confirmAction === "service") {
-        markServiceReady(id, serviceType);
-    }
-    hideConfirmationModal();
-});
+        if (confirmAction === "service") {
+            markServiceReady(id, serviceType);
+        }
+        hideConfirmationModal();
+    });
+}
 
 function showConfirmationModal(id, type, title, message, confirmAction, serviceType = null) {
     currentJobToConfirm = { id, type, confirmAction, serviceType };
@@ -316,29 +341,39 @@ const installButton = document.getElementById('install-button');
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    installButton.classList.remove('hidden');
+    if(installButton) installButton.classList.remove('hidden');
     console.log('PWA está pronto para ser instalado.');
 });
 
-installButton.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`Resultado da instalação: ${outcome}`);
-    deferredPrompt = null;
-    installButton.classList.add('hidden');
-});
+if(installButton) {
+    installButton.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`Resultado da instalação: ${outcome}`);
+        deferredPrompt = null;
+        installButton.classList.add('hidden');
+    });
+}
 
 // =========================================================================
-// SOM DE NOTIFICAÇÃO (FIX) - OUVINTE DO SERVICE WORKER
+// SOM DE NOTIFICAÇÃO (FIX COMPLETO) - OUVINTE DO SERVICE WORKER
 // =========================================================================
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
         // Ouve o comando enviado pelo Service Worker para tocar o som
+        console.log('🎵 Comando recebido do SW (Mecânico):', event.data);
+
         if (event.data && event.data.type === 'PLAY_SOUND') {
-            console.log("🔊 Tocando som de notificação...");
-            const audio = new Audio('sounds/notify.mp3');
-            audio.play().catch(e => console.warn("Erro ao tocar som (interaja com a página primeiro):", e));
+            // Usa o áudio global que (esperamos) já foi desbloqueado pelo unlockAudio()
+            notificationSound.currentTime = 0;
+            notificationSound.play()
+                .then(() => console.log("🔊 Som reproduzido com sucesso!"))
+                .catch(e => {
+                    console.warn("❌ Erro ao tocar som (Toque na tela para liberar):", e);
+                    // Fallback visual se o som falhar
+                    alert("Novo serviço atribuído!");
+                });
         }
     });
 }
