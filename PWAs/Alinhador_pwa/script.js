@@ -20,6 +20,10 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// --- ÁUDIO GLOBAL (Para evitar bloqueio do navegador) ---
+const notificationSound = new Audio('sounds/notify.mp3'); // Certifique-se que o arquivo existe na pasta public/sounds
+let audioUnlocked = false;
+
 // --- Constantes de Papéis e Status ---
 const ALIGNER_ROLE = 'aligner';
 const MANAGER_ROLE = 'manager';
@@ -55,8 +59,11 @@ let deferredInstallPrompt = null;
 // =========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     
-    // 1. REGISTRO DO SERVICE WORKER (CORREÇÃO PARA VERCEL)
-    // Isso garante que o navegador instale o SW antes de tentarmos usar o Push.
+    // 1. DESBLOQUEIO DE ÁUDIO (ESSENCIAL PARA MOBILE/CHROME)
+    document.body.addEventListener('click', unlockAudio, { once: true });
+    document.body.addEventListener('touchstart', unlockAudio, { once: true });
+
+    // 2. REGISTRO DO SERVICE WORKER
     if ('serviceWorker' in navigator) {
         try {
             const registration = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
@@ -66,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // 2. Verificação de Usuário Local
+    // 3. Verificação de Usuário Local
     const savedUser = localStorage.getItem('currentUser');
 
     if (!savedUser) {
@@ -83,33 +90,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     try {
-        // 3. Login Anônimo no Firebase (Necessário para leitura/escrita)
         await signInAnonymously(auth);
         console.log("Autenticação anônima com Firebase bem-sucedida.");
         
-        // 4. Inicializa Configuração do App
         postLoginSetup(user);
-
-        // 5. Tenta registrar Push Notifications (Agora o SW já deve estar registrado)
-        // Passamos o role e username para vincular o token no banco
         registerForPushNotifications(user.role, user.username);
 
     } catch (error) {
         console.error("Erro na autenticação anônima com Firebase:", error);
-        alert("Falha ao conectar com o servidor. Verifique o console e tente recarregar a página.");
+        alert("Falha ao conectar com o servidor. Tente recarregar.");
     }
 });
+
+// Função para enganar o navegador e permitir áudio futuro
+function unlockAudio() {
+    if (audioUnlocked) return;
+    
+    // Toca o som mutado rapidinho só para liberar a permissão
+    notificationSound.volume = 0.1; // Volume baixo para teste
+    notificationSound.play().then(() => {
+        notificationSound.pause();
+        notificationSound.currentTime = 0;
+        audioUnlocked = true;
+        notificationSound.volume = 1.0; // Restaura volume máximo
+        console.log("🔊 Áudio desbloqueado pelo usuário!");
+    }).catch(e => {
+        console.warn("Ainda não foi possível desbloquear o áudio:", e);
+    });
+}
 
 function postLoginSetup(user) {
     currentUserRole = user.role;
     currentUserName = user.username;
 
-    // Inicia ouvintes do banco de dados
     setupRealtimeListeners(); 
     setupUserListener();
     setupServiceWorkerListener();
     
-    // Configuração da UI
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
@@ -122,7 +139,6 @@ function postLoginSetup(user) {
     const confirmBtn = document.getElementById("confirm-button");
     if (confirmBtn) confirmBtn.addEventListener("click", handleConfirmAction);
 
-    // Mostra quem está logado
     const userInfo = document.getElementById('user-info');
     if (userInfo) userInfo.textContent = `${user.username} (${user.role})`;
 
@@ -157,27 +173,23 @@ function setupPwaInstallHandlers() {
     };
 
     if (window.deferredPwaPrompt) {
-        console.log("✅ Script recuperou o evento salvo pelo HTML.");
         showInstallButton();
     }
 
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         window.deferredPwaPrompt = e;
-        console.log("📲 Evento recebido pelo JS.");
         showInstallButton();
     });
 
     window.addEventListener('appinstalled', () => {
         window.deferredPwaPrompt = null;
         installButton.classList.add('hidden');
-        console.log("🎉 PWA Instalado com sucesso!");
     });
 
     installButton.addEventListener('click', async () => {
         const promptEvent = window.deferredPwaPrompt;
         if (!promptEvent) {
-            alert("A instalação não está disponível neste navegador ou dispositivo.");
             return;
         }
         promptEvent.prompt();
@@ -192,12 +204,17 @@ function setupPwaInstallHandlers() {
 function setupServiceWorkerListener() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', event => {
-            console.log('Página: Mensagem recebida do Service Worker:', event.data);
+            console.log('🎵 Comando recebido do SW:', event.data);
+            
             if (event.data && event.data.type === 'PLAY_SOUND') {
-                const notificationSound = new Audio('sounds/notify.mp3');
-                notificationSound.play().catch(error => {
-                    console.warn('Não foi possível tocar o som da notificação automaticamente:', error);
-                });
+                // Tenta tocar
+                notificationSound.currentTime = 0;
+                notificationSound.play()
+                    .then(() => console.log("🔊 Som reproduzido com sucesso!"))
+                    .catch(error => {
+                        console.error('❌ Erro ao tocar som (Bloqueio do navegador?):', error);
+                        alertUser("Nova notificação! (Toque na tela para ativar o som)", "success");
+                    });
             }
         });
     }
@@ -390,7 +407,7 @@ function renderAlignmentQueue() {
 }
 
 // =========================================================================
-// AÇÕES DO USUÁRIO (Formulários e Botões)
+// AÇÕES DO USUÁRIO
 // =========================================================================
 async function handleAddAlignment(e) {
     e.preventDefault();
@@ -417,7 +434,6 @@ async function handleAddAlignment(e) {
         await addDoc(collection(db, ALIGNMENT_COLLECTION_PATH), newAlignmentCar);
         alertUser('Carro adicionado à fila de alinhamento!', 'success');
         document.getElementById('alignment-form').reset();
-        // Reseta o select para o placeholder
         document.getElementById('aliVendedorName').value = ""; 
     } catch (error) {
         console.error("Erro ao adicionar à fila:", error);
@@ -490,7 +506,7 @@ async function returnToMechanic(alignmentDocId, targetMechanic, shouldReturnToAl
 }
 
 // =========================================================================
-// LÓGICA DOS MODAIS
+// MODAIS E UTILITÁRIOS
 // =========================================================================
 function handleConfirmAction() {
     const { id, confirmAction } = currentJobToConfirm;
@@ -556,12 +572,8 @@ async function handleReturnToMechanic(e) {
     hideReturnToMechanicModal();
 }
 
-// =========================================================================
-// FUNÇÕES DE ORDENAÇÃO (GERENTE) E UTILITÁRIOS
-// =========================================================================
 function findAdjacentCar(currentIndex, direction) {
     const activeCars = getSortedAlignmentQueue();
-
     let adjacentIndex = currentIndex + direction;
     while(adjacentIndex >= 0 && adjacentIndex < activeCars.length) {
         if (activeCars[adjacentIndex].status === STATUS_WAITING) {
@@ -574,17 +586,13 @@ function findAdjacentCar(currentIndex, direction) {
 
 async function moveAlignmentUp(docId) {
     if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem mover carros na fila.");
-
     const sortedQueue = getSortedAlignmentQueue();
     const index = sortedQueue.findIndex(car => car.id === docId);
     if (index === -1 || sortedQueue[index].status !== STATUS_WAITING) return;
-
     const carBefore = findAdjacentCar(index, -1);
     if (!carBefore) return alertUser("Este carro já está no topo da fila de espera.");
-
     const newTimeMillis = (carBefore.timestamp.seconds * 1000) - 1000;
     const newTimestamp = Timestamp.fromMillis(newTimeMillis);
-
     try {
         const docRef = doc(db, ALIGNMENT_COLLECTION_PATH, docId);
         await updateDoc(docRef, { timestamp: newTimestamp });
@@ -597,17 +605,13 @@ async function moveAlignmentUp(docId) {
 
 async function moveAlignmentDown(docId) {
     if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem mover carros na fila.");
-
     const sortedQueue = getSortedAlignmentQueue();
     const index = sortedQueue.findIndex(car => car.id === docId);
     if (index === -1 || sortedQueue[index].status !== STATUS_WAITING) return;
-
     const carAfter = findAdjacentCar(index, +1);
     if (!carAfter) return alertUser("Este carro já é o último na fila de espera.");
-
     const newTimeMillis = (carAfter.timestamp.seconds * 1000) + 1000;
     const newTimestamp = Timestamp.fromMillis(newTimeMillis);
-
     try {
         const docRef = doc(db, ALIGNMENT_COLLECTION_PATH, docId);
         await updateDoc(docRef, { timestamp: newTimestamp });
@@ -630,7 +634,6 @@ function alertUser(message, type = 'error') {
     }
 }
 
-// Expondo funções globais que são chamadas pelo HTML
 window.updateAlignmentStatus = updateAlignmentStatus;
 window.moveAlignmentUp = moveAlignmentUp;
 window.moveAlignmentDown = moveAlignmentDown;
