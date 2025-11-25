@@ -133,34 +133,66 @@ function handleLogout() {
  */
 function setupPwaInstallHandlers() {
     const installButton = document.getElementById('install-pwa-btn');
+    
+    // Se o botão não existe no HTML, não faz nada
+    if (!installButton) return;
 
-    // Se o app já estiver rodando como um PWA instalado, o botão não é necessário.
+    // Se já estiver instalado (App), esconde o botão e sai
     if (window.matchMedia('(display-mode: standalone)').matches) {
+        installButton.classList.add('hidden');
         return;
     }
 
-    // Ouve pelo evento que o navegador dispara quando o app se torna instalável.
+    // Função auxiliar para mostrar o botão verde
+    const showInstallButton = () => {
+        installButton.classList.remove('hidden');
+        installButton.classList.add('flex'); // Garante display flex se precisar
+    };
+
+    // CENÁRIO 1: O HTML já capturou o evento antes do JS carregar?
+    if (window.deferredPwaPrompt) {
+        console.log("✅ Script recuperou o evento salvo pelo HTML.");
+        showInstallButton();
+    }
+
+    // CENÁRIO 2: O evento aconteceu depois do JS carregar?
     window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault(); // Previne o prompt padrão do navegador
-        deferredInstallPrompt = e; // Guarda o evento
-        installButton.classList.remove('hidden'); // Mostra nosso botão
+        e.preventDefault();
+        window.deferredPwaPrompt = e;
+        console.log("📲 Evento recebido pelo JS.");
+        showInstallButton();
     });
 
-    // Adiciona o listener de clique para mostrar o prompt de instalação.
+    // CENÁRIO 3: O App foi instalado com sucesso
+    window.addEventListener('appinstalled', () => {
+        window.deferredPwaPrompt = null;
+        installButton.classList.add('hidden');
+        console.log("🎉 PWA Instalado com sucesso!");
+    });
+
+    // AÇÃO DO CLIQUE NO BOTÃO VERDE
     installButton.addEventListener('click', async () => {
-        if (deferredInstallPrompt) {
-            deferredInstallPrompt.prompt(); // Mostra o prompt de instalação
-            const { outcome } = await deferredInstallPrompt.userChoice;
-            
-            // O prompt só pode ser usado uma vez.
-            deferredInstallPrompt = null;
-            
-            // Esconde o botão após a interação.
+        const promptEvent = window.deferredPwaPrompt;
+        if (!promptEvent) {
+            alert("A instalação não está disponível neste navegador ou dispositivo.");
+            return;
+        }
+
+        // Mostra a pergunta nativa do sistema ("Deseja instalar?")
+        promptEvent.prompt();
+        
+        // Espera a resposta do usuário
+        const { outcome } = await promptEvent.userChoice;
+        console.log(`Resultado da instalação: ${outcome}`);
+        
+        // Limpa a variável
+        window.deferredPwaPrompt = null;
+        
+        // Se aceitou, esconde o botão
+        if (outcome === 'accepted') {
             installButton.classList.add('hidden');
         }
     });
-
-    window.addEventListener('appinstalled', () => { deferredInstallPrompt = null; });
 }
 
 function setupServiceWorkerListener() {

@@ -118,6 +118,20 @@
             </form>
         </div>
     </div>
+    <script>
+        window.deferredPwaPrompt = null;
+        
+        // O navegador dispara isso muito rápido. Se não pegarmos aqui, perdemos.
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault(); // Bloqueia o banner feio do navegador
+            window.deferredPwaPrompt = e; // Guarda o evento no cofre
+            console.log("📲 Evento de instalação capturado no HTML!");
+            
+            // Tenta mostrar o botão IMEDIATAMENTE (sem esperar o script.js)
+            const btn = document.getElementById('install-pwa-btn');
+            if (btn) btn.classList.remove('hidden');
+        });
+    </script>
 
     <script src="script.js" type="module"></script>
 </body>
