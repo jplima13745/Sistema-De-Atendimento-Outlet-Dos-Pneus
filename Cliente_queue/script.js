@@ -411,68 +411,99 @@ async function fetchAds() {
 
 function startAdCycle() {
     if (adCycleTimeout) clearTimeout(adCycleTimeout);
-    adCycleTimeout = setTimeout(showNextAd, queueDisplayInterval);
+    
+    // Garante que o intervalo seja um número válido, padrão 10s se der erro
+    const intervalTime = queueDisplayInterval && !isNaN(queueDisplayInterval) ? queueDisplayInterval : 10000;
+    
+    console.log(`Iniciando contagem para próximo anúncio: ${intervalTime / 1000} segundos`);
+    adCycleTimeout = setTimeout(showNextAd, intervalTime);
 }
 
 // Substitua a função showNextAd atual por esta:
 function showNextAd() {
-    // Se não houver anúncios, tenta de novo em 30s
+    // 1. Lógica de Fila Vazia (Atualização a cada 1 min)
     if (!ads || ads.length === 0) {
-        // Tenta buscar novamente caso a lista esteja vazia por erro anterior
+        console.log("Fila de anúncios vazia ou indefinida. Buscando atualizações...");
+        
         fetchAds().then(() => {
-            adCycleTimeout = setTimeout(startAdCycle, 30000);
+            if (ads && ads.length > 0) {
+                // Se achou anúncios, começa o ciclo imediatamente (reseta índice)
+                currentAdIndex = 0;
+                startAdCycle(); 
+            } else {
+                // Se AINDA estiver vazio, espera 1 minuto (60000ms) e tenta de novo
+                console.log("Nenhum anúncio encontrado. Nova verificação em 1 minuto.");
+                adCycleTimeout = setTimeout(showNextAd, 60000);
+            }
+        }).catch((e) => {
+            console.error("Erro ao buscar anúncios na espera:", e);
+            // Em caso de erro de rede, tenta em 1 minuto também
+            adCycleTimeout = setTimeout(showNextAd, 60000);
         });
         return;
     }
 
-    // --- CORREÇÃO DE SEGURANÇA ---
-    // Se a lista diminuiu e o índice atual ficou fora do limite, reseta para 0
+    // 2. Proteção de Índice
     if (currentAdIndex >= ads.length) {
         currentAdIndex = 0;
     }
-    // -----------------------------
 
     const ad = ads[currentAdIndex];
-    
-    // Prepara o índice para a próxima vez
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
+    // Pausa o dashboard e prepara o container de anúncios
     ScrollManager.pauseAll();
     queueContainer.classList.add('hidden');
     
     adContainer.innerHTML = '';
     adContainer.classList.remove('hidden');
 
+    // 3. Exibição (Vídeo ou Imagem)
     if (ad.type === 'video') {
         const video = document.createElement('video');
         video.src = ad.url;
         video.autoplay = true;
-        video.muted = false; // Garanta que o navegador permita som (geralmente requer interação do usuário antes)
+        video.muted = false; 
         video.playsInline = true;
-        video.onended = hideAdAndResume;
         
-        // Tratamento de erro caso o vídeo falhe ao carregar
+        // Se o vídeo terminar, volta pro dashboard
+        video.onended = () => {
+            hideAdAndResume();
+        };
+        
+        // Se der erro no vídeo, volta pro dashboard imediatamente
         video.onerror = () => {
-            console.error("Erro ao reproduzir vídeo", ad.url);
+            console.error("Erro ao reproduzir vídeo:", ad.url);
             hideAdAndResume();
         };
 
         adContainer.appendChild(video);
-        video.play().catch(e => {
-            console.error(e);
-            // Se o autoplay falhar, pula o anúncio
-            hideAdAndResume();
-        });
+        
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.error("Autoplay bloqueado ou falhou:", error);
+                // Se falhar o play, espera 5 segundos e pula
+                setTimeout(hideAdAndResume, 5000);
+            });
+        }
+
     } else {
+        // Lógica de Imagem
         const img = document.createElement('img');
         img.src = ad.url;
+        
         img.onload = () => {
-            // Só inicia o timer quando a imagem carregar
-            const displayTime = (ad.duration || globalImageDuration) * 1000;
+            // Usa a duração da imagem (segundos * 1000) ou o global
+            const durationInSeconds = ad.duration ? parseInt(ad.duration, 10) : globalImageDuration;
+            const displayTime = durationInSeconds * 1000;
+            
+            console.log(`Exibindo imagem por ${displayTime}ms`);
             adCycleTimeout = setTimeout(hideAdAndResume, displayTime);
         };
+        
         img.onerror = () => {
-            console.error("Erro ao carregar imagem", ad.url);
+            console.error("Erro ao carregar imagem:", ad.url);
             hideAdAndResume();
         };
         adContainer.appendChild(img);
@@ -480,15 +511,19 @@ function showNextAd() {
 }
 
 function hideAdAndResume() {
+    // Esconde anúncio, mostra dashboard
     adContainer.classList.add('hidden');
     queueContainer.classList.remove('hidden');
     ScrollManager.resumeAll();
 
-    fetchAds().then(() => {
-            console.log("Lista de anúncios atualizada.");
-        }).catch(console.error);
-
+    // --- CORREÇÃO DO DELAY ---
+    // 1. Iniciamos o ciclo do dashboard IMEDIATAMENTE. 
+    // Não esperamos o fetchAds terminar. Isso garante que o tempo seja exato.
     startAdCycle();
+
+    // 2. Atualizamos a lista em segundo plano ("silenciosamente")
+    // Assim, na próxima vez que rodar o showNextAd, a lista já estará nova.
+    fetchAds().catch(console.error);
 }
 
 let isFirstRender = true;
