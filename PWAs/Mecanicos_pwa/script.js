@@ -1,8 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-// ADICIONADO: 'getDocs' na lista de imports abaixo
 import { getFirestore, doc, updateDoc, onSnapshot, collection, query, where, getDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// Importa a função de push do arquivo separado
 import { registerForPushNotifications } from './push.js';
 
 // =========================================================================
@@ -35,11 +35,12 @@ if (isCanvasEnvironment && typeof __firebase_config !== 'undefined') {
 }
 
 // =========================================================================
-// ÁUDIO E NOTIFICAÇÕES (FIX ANDROID)
+// ÁUDIO (REVERTIDO PARA O MODELO SIMPLES)
 // =========================================================================
 const notificationSound = new Audio('sounds/notify.mp3');
 let interactionUnlocked = false;
 
+// Esta função agora serve APENAS para desbloquear o som no Android/iOS
 async function unlockFeatures() {
     if (interactionUnlocked) return;
     interactionUnlocked = true;
@@ -49,13 +50,10 @@ async function unlockFeatures() {
         notificationSound.pause();
         notificationSound.currentTime = 0;
         notificationSound.volume = 1.0;
-        console.log("🔊 Áudio desbloqueado no Android.");
-    }).catch(e => console.warn("Ainda não foi possível desbloquear o áudio:", e));
-
-    if (currentUserRole && currentUserName) {
-        console.log("📲 Tentando registrar Push após interação do usuário...");
-        registerForPushNotifications(currentUserRole, currentUserName);
-    }
+        console.log("🔊 Áudio desbloqueado com sucesso.");
+    }).catch(e => {
+        console.warn("Ainda não foi possível desbloquear o áudio:", e);
+    });
 
     document.body.removeEventListener('click', unlockFeatures);
     document.body.removeEventListener('touchstart', unlockFeatures);
@@ -99,11 +97,8 @@ function postLoginSetup(user) {
 
     setupRealtimeListeners();
 
-    if (Notification.permission === 'granted') {
-        registerForPushNotifications(user.role, user.username);
-    } else {
-        console.log("⚠️ Aguardando clique para pedir notificação no Android.");
-    }
+    // REVERTIDO: O registro do Push volta a ser chamado aqui, de forma segura
+    registerForPushNotifications(user.role, user.username);
 }
 
 window.handleLogout = function() {
@@ -150,7 +145,7 @@ let serviceJobs = [];
 let currentJobToConfirm = { id: null, type: null, confirmAction: null, serviceType: null };
 
 const SERVICE_COLLECTION_PATH = `/artifacts/${appId}/public/data/serviceJobs`;
-// ADICIONADO: Constantes necessárias para a lógica de alinhamento
+// Constantes de Alinhamento (MANTIDAS POIS FUNCIONARAM)
 const ALIGNMENT_COLLECTION_PATH = `/artifacts/${appId}/public/data/alignmentQueue`;
 const STATUS_WAITING = 'Aguardando'; 
 const STATUS_FINALIZED = 'Finalizado';
@@ -161,7 +156,7 @@ const STATUS_READY = 'Pronto para Pagamento';
 const STATUS_GS_FINISHED = 'Serviço Geral Concluído';
 const STATUS_TS_FINISHED = 'Serviço Pneus Concluído';
 
-// FUNÇÃO CORRIGIDA: Agora lida corretamente com o Alinhamento
+// FUNÇÃO MARKSERVICEREADY (MANTIDA A VERSÃO CORRIGIDA)
 async function markServiceReady(docId, serviceType) {
     if (serviceType !== 'GS') return;
 
@@ -182,14 +177,13 @@ async function markServiceReady(docId, serviceType) {
 
         const job = serviceDoc.data();
         const isGsReady = job.statusGS === STATUS_GS_FINISHED;
-        const isTsReady = job.statusTS === STATUS_TS_FINISHED || job.statusTS === null; // Null significa que não tem pneu
+        const isTsReady = job.statusTS === STATUS_TS_FINISHED || job.statusTS === null;
 
         // Se ambos (Mecânica e Pneus) acabaram
         if (isGsReady && isTsReady) {
             
             if (job.requiresAlignment) {
                 // --- LÓGICA DE ALINHAMENTO ---
-                // Busca o ticket de alinhamento vinculado pelo ID do serviço
                 const alignQuery = query(
                     collection(db, ALIGNMENT_COLLECTION_PATH),
                     where('serviceJobId', '==', docId)
@@ -201,24 +195,19 @@ async function markServiceReady(docId, serviceType) {
                     const alignDocSnapshot = alignSnapshot.docs[0];
                     const alignData = alignDocSnapshot.data();
 
-                    // Só libera se não estiver finalizado ou perdido (segurança)
                     if (alignData.status !== STATUS_FINALIZED && alignData.status !== STATUS_LOST && alignData.status !== STATUS_READY) {
-                        // MUDA O STATUS DO ALINHAMENTO PARA 'AGUARDANDO' (Isso faz aparecer 'Disponível' na tela do Alinhador)
                         await updateDoc(alignDocSnapshot.ref, { status: STATUS_WAITING });
                         console.log("Alinhamento liberado com sucesso.");
                     }
                     
-                    // Mantém o serviço principal como 'Serviço Geral Concluído' (Não libera pagamento ainda)
                     await updateDoc(serviceDocRef, { status: STATUS_GS_FINISHED });
                 } else {
-                    // Fallback: Se deveria ter alinhamento mas não achou o doc, finaliza para não travar
                     console.warn("Alinhamento não encontrado. Finalizando serviço.");
                     await updateDoc(serviceDocRef, { status: STATUS_READY });
                 }
 
             } else {
                 // --- NÃO REQUER ALINHAMENTO ---
-                // Libera direto para Pagamento
                 await updateDoc(serviceDocRef, { status: STATUS_READY });
             }
         }
