@@ -3589,7 +3589,7 @@ function renderReadyJobs(serviceJobs, alignmentQueue) {
             }
             modal.classList.remove('hidden');
         }
-
+        //Modal
         function hideMechanicPerformanceModal() {
             document.getElementById('mechanic-performance-modal').classList.add('hidden');
         }
