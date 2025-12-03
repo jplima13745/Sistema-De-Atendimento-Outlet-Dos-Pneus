@@ -47,6 +47,7 @@ let adCycleTimeout = null;
 let globalImageDuration = 10;
 let queueDisplayInterval = 120 * 1000; 
 let currentAdIndex = 0;
+let pendingAdElement = null; // Buffer para pré-renderização
 
 const queueContainer = document.getElementById('queue-container');
 const adContainer = document.getElementById('ad-container');
@@ -65,12 +66,52 @@ function waitForFirebaseAuth() {
 async function initializeSystem() {
     setupClock();
     setupRealtimeListeners();
-    // Carrega configurações iniciais
+    initAntiHibernation(); 
+
+    // 1. Carrega configurações e anúncios
     await updateAllExternalData(); 
-    startAdCycle();
+    
+    // 2. Inicia o ciclo explicitamente APÓS ter dados
+    if (ads.length > 0) {
+        preloadNextAd();
+        startAdCycle();
+    }
 }
 
-// Atualiza Ads e Configurações simultaneamente
+// --- Anti-Hibernação ---
+function initAntiHibernation() {
+    const noSleepVideo = document.getElementById('no-sleep-video');
+    if (noSleepVideo) {
+        const playAttempt = () => {
+            noSleepVideo.play().then(() => {
+                console.log("Anti-hibernação (Pixel Loop): Ativo");
+            }).catch(() => {
+                window.addEventListener('click', playAttempt, { once: true });
+            });
+        };
+        playAttempt();
+    }
+
+    if ('wakeLock' in navigator) {
+        let wakeLock = null;
+        const requestWakeLock = async () => {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Anti-hibernação (WakeLock API): Ativo');
+            } catch (err) {
+                console.log(`Erro Wake Lock: ${err.name}, ${err.message}`);
+            }
+        };
+        requestWakeLock();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && wakeLock === null) {
+                requestWakeLock();
+            }
+        });
+    }
+}
+
+// Atualiza Ads e Configurações
 async function updateAllExternalData() {
     try {
         await Promise.all([
@@ -78,7 +119,7 @@ async function updateAllExternalData() {
             fetchGlobalConfig(),
             fetchIntervalConfig()
         ]);
-        console.log("Dados externos sincronizados. Intervalo atual:", queueDisplayInterval/1000, "s");
+        console.log("Dados externos sincronizados.");
     } catch (e) {
         console.error("Erro ao atualizar dados externos:", e);
     }
@@ -96,7 +137,7 @@ function setupClock() {
     setInterval(updateClock, 1000);
 }
 
-// --- Listeners ---
+// --- Listeners do Firebase ---
 function setupRealtimeListeners() {
     const hiddenItemsQuery = query(collection(db, HIDDEN_ITEMS_COLLECTION_PATH));
     onSnapshot(hiddenItemsQuery, (snapshot) => {
@@ -152,7 +193,7 @@ function renderDisplay() {
             const jobType = job.type || job.serviceType || '';
             if (jobType.includes('Serviço Geral') || job.statusGS) {
                 const isCompleted = [STATUS_GS_FINISHED, 'Concluído', 'Serviço Geral Concluído'].includes(job.statusGS) || job.status === STATUS_GS_FINISHED || job.status === STATUS_READY;
-                vehicle.services.general = { name: 'Mecânico', completed: isCompleted };
+                vehicle.services.general = { name: 'Elevador', completed: isCompleted };
             }
             if (jobType.includes('Pneus') || job.statusTS) {
                 const isCompleted = ['Concluído', 'Serviço Pneus Concluído', STATUS_TS_FINISHED].includes(job.statusTS) || vehicle.status === STATUS_READY;
@@ -394,41 +435,28 @@ const ScrollManager = {
 // BUSCA DURAÇÃO DE IMAGEM
 async function fetchGlobalConfig() {
     try {
-        // CORREÇÃO: Removemos o ?t=... da URL para evitar erros de rota na API
-        // E usamos cache: 'no-store' para garantir dados frescos
-        const response = await fetch(`${API_BASE_URL}/config/value`, { 
-            cache: 'no-store' 
-        });
-        
+        const response = await fetch(`${API_BASE_URL}/config/value`, { cache: 'no-store' });
         if (response.ok) {
             const config = await response.json();
-            
-            // Log de Debug para ver o que a API está mandando exatamente
-            // console.log("RAW Config Duration:", config); 
-
             if (config && config.value) {
                 const newValue = parseInt(config.value, 10);
                 if (!isNaN(newValue) && newValue > 0) {
                     globalImageDuration = newValue;
                 }
             }
-        } else {
-            console.warn(`Falha ao buscar duração global. Status: ${response.status}`);
         }
     } catch (e) { 
-        console.error("Erro fatal ao buscar duração global:", e); 
+        console.error("Erro ao buscar duração global:", e); 
     }
 }
 
-// BUSCA INTERVALO DO DASHBOARD (A CORREÇÃO PRINCIPAL ESTÁ AQUI)
+// BUSCA INTERVALO DO DASHBOARD
 async function fetchIntervalConfig() {
     try {
         const response = await fetch(`${API_BASE_URL}/config/interval`);
         if (response.ok) {
             const config = await response.json();
             if (config?.value) {
-                // CORREÇÃO: Multiplica por 1000 pois a API deve retornar em segundos, 
-                // e o setTimeout precisa de milissegundos.
                 queueDisplayInterval = parseInt(config.value, 10);
             }
             console.log("Config atualizada - Intervalo Dashboard:", queueDisplayInterval);
@@ -436,24 +464,73 @@ async function fetchIntervalConfig() {
     } catch (e) { console.error(e); }
 }
 
-// BUSCA ANÚNCIOS
+// BUSCA ANÚNCIOS (Modificada para NÃO resetar o ciclo/index)
 async function fetchAds() {
     try {
         const response = await fetch(`${API_BASE_URL}/media`, { cache: 'no-store' });
         if (!response.ok) throw new Error('Erro API Media');
         const mediaItems = await response.json();
-        ads = mediaItems
+        
+        const validAds = mediaItems
             .filter(item => item.status === 'ativo')
             .map(item => ({ ...item, type: item.type === 'Imagem' ? 'image' : 'video' }))
             .sort((a, b) => (a.order || 99) - (b.order || 99));
-        // console.log("Anúncios atualizados. Total:", ads.length);
-    } catch (e) { ads = []; }
+
+        ads = validAds;
+
+        // Segurança: Se a lista diminuiu e o índice está fora, corrige
+        if (currentAdIndex >= ads.length) {
+            currentAdIndex = 0;
+        }
+
+        // NOTA: Removemos a lógica que chamava startAdCycle() aqui para evitar loops
+        // O controle agora é 100% feito pelo initializeSystem e hideAdAndResume
+        
+    } catch (e) { 
+        ads = []; 
+        console.error("Erro fetchAds:", e);
+    }
+}
+
+// PRÉ-RENDERIZA O PRÓXIMO ANÚNCIO (Buffer)
+function preloadNextAd() {
+    if (!ads || ads.length === 0) return;
+
+    // Limpa buffer anterior
+    const preloadContainer = document.getElementById('preload-container');
+    if (!preloadContainer) return;
+
+    preloadContainer.innerHTML = ''; 
+    pendingAdElement = null;
+
+    // A lógica de ciclo está no showNextAd, então aqui pegamos o índice atual
+    // que será usado na próxima execução.
+    const ad = ads[currentAdIndex]; 
+
+    console.log(`Pré-carregando background: ${ad.title || 'Anúncio'} (${ad.type})`);
+
+    let element;
+    if (ad.type === 'video') {
+        element = document.createElement('video');
+        element.src = ad.url;
+        element.muted = false; 
+        element.playsInline = true;
+        element.preload = "auto";
+        element.className = "ad-content";
+    } else {
+        element = document.createElement('img');
+        element.src = ad.url;
+        element.className = "ad-content";
+    }
+
+    preloadContainer.appendChild(element);
+    pendingAdElement = element;
 }
 
 function startAdCycle() {
     if (adCycleTimeout) clearTimeout(adCycleTimeout);
     
-    // Usa o intervalo que acabamos de atualizar
+    // Usa o intervalo configurado
     const intervalTime = queueDisplayInterval && !isNaN(queueDisplayInterval) ? queueDisplayInterval : 10000;
     
     console.log(`Próximo ciclo de anúncios em: ${intervalTime / 1000} segundos`);
@@ -466,100 +543,102 @@ function showNextAd() {
         adCycleTimeout = null;
     }
 
-    // Se lista vazia ou indefinida
     if (!ads || ads.length === 0) {
-        console.log("Fila de anúncios vazia/indefinida. Buscando...");
+        // Se não tem anúncio, tenta buscar e reinicia o timer de espera
         updateAllExternalData().then(() => {
-            if (ads && ads.length > 0) {
+            if (ads.length > 0) {
                 currentAdIndex = 0;
-                startAdCycle(); 
+                preloadNextAd();
+                startAdCycle();
             } else {
-                adCycleTimeout = setTimeout(showNextAd, 60000); 
+                adCycleTimeout = setTimeout(showNextAd, 60000);
             }
         });
         return;
     }
 
-    // Proteção de índice
-    if (currentAdIndex >= ads.length) {
-        currentAdIndex = 0;
+    // Fallback: Se o preload falhou (buffer vazio), carrega na hora
+    if (!pendingAdElement) {
+        preloadNextAd();
     }
-
+    
+    const element = pendingAdElement;
     const ad = ads[currentAdIndex];
-    // Prepara o índice para a próxima rodada
+
+    // --- AVANÇA O ÍNDICE PARA O PRÓXIMO ---
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
+    // Troca de Interface
     ScrollManager.pauseAll();
     queueContainer.classList.add('hidden');
-    adContainer.innerHTML = '';
+    adContainer.innerHTML = ''; 
     adContainer.classList.remove('hidden');
 
-    if (ad.type === 'video') {
-        // --- LÓGICA DE VÍDEO (Mantida igual) ---
-        const video = document.createElement('video');
-        video.src = ad.url;
-        video.autoplay = true;
-        video.muted = false; 
-        video.playsInline = true;
-        
-        video.onended = () => hideAdAndResume();
-        video.onerror = (e) => {
-            console.error("Erro vídeo:", e);
-            hideAdAndResume();
-        };
+    if (element) {
+        adContainer.appendChild(element);
 
-        adContainer.appendChild(video);
-        
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                video.muted = true;
-                video.play().catch(() => hideAdAndResume());
-            });
+        if (ad.type === 'video') {
+            handleVideoAd(element, ad);
+        } else {
+            handleImageAd(element, ad);
         }
-
     } else {
-        // --- LÓGICA DE IMAGEM (REFORÇADA) ---
-        const img = document.createElement('img');
-        img.src = ad.url;
-        
-        img.onload = () => {
-            // LÓGICA DE PRIORIDADE ROBUSTA
-            // 1. Assume o global como padrão
-            let finalDuration = globalImageDuration;
-
-            // 2. Se o anúncio tem duração específica VÁLIDA (número > 0), usa ela
-            if (ad.duration) {
-                const specificDuration = parseInt(ad.duration, 10);
-                if (!isNaN(specificDuration) && specificDuration > 0) {
-                    finalDuration = specificDuration;
-                }
-            }
-
-            console.log(`Exibindo Imagem: ${ad.title || 'Sem Titulo'} | Tempo: ${finalDuration}s (Global: ${globalImageDuration}s)`);
-
-            // Converte para milissegundos
-            const displayTimeMs = finalDuration * 1000;
-            adCycleTimeout = setTimeout(hideAdAndResume, displayTimeMs);
-        };
-        
-        img.onerror = () => {
-            console.error("Erro ao carregar imagem:", ad.url);
-            hideAdAndResume();
-        };
-        adContainer.appendChild(img);
+        console.error("Falha ao recuperar buffer. Pulando...");
+        hideAdAndResume();
     }
+}
+
+function handleVideoAd(video, ad) {
+    video.autoplay = true;
+    
+    video.onended = () => hideAdAndResume();
+    video.onerror = (e) => {
+        console.error("Erro vídeo:", e);
+        hideAdAndResume();
+    };
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.warn("Autoplay bloqueado, tentando mudo:", error);
+            video.muted = true;
+            video.play().catch(() => hideAdAndResume());
+        });
+    }
+}
+
+function handleImageAd(img, ad) {
+    let finalDuration = globalImageDuration;
+
+    if (ad.duration) {
+        const specificDuration = parseInt(ad.duration, 10);
+        if (!isNaN(specificDuration) && specificDuration > 0) {
+            finalDuration = specificDuration;
+        }
+    }
+    
+    console.log(`Exibindo Imagem: ${finalDuration}s`);
+    adCycleTimeout = setTimeout(hideAdAndResume, finalDuration * 1000);
+    
+    img.onerror = () => {
+        console.error("Erro render img");
+        hideAdAndResume();
+    };
 }
 
 function hideAdAndResume() {
     adContainer.classList.add('hidden');
     queueContainer.classList.remove('hidden');
+    adContainer.innerHTML = ''; 
+    pendingAdElement = null; // Limpa o buffer antigo
+    
     ScrollManager.resumeAll();
 
-    // CORREÇÃO DE LOGICA:
-    // 1. Primeiro buscamos os dados novos (intervalo novo)
-    // 2. SÓ DEPOIS iniciamos o ciclo com o valor atualizado.
+    // 1. Atualiza dados (sem resetar índice)
+    // 2. Carrega o PRÓXIMO anúncio no buffer
+    // 3. Inicia o timer
     updateAllExternalData().then(() => {
+        preloadNextAd(); 
         startAdCycle();
     });
 }

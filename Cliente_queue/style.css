@@ -129,6 +129,7 @@ body {
     background-color: var(--in-progress-blue);
     color: #fbd230;
     border-radius: 6px 6px 0 0;
+    text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 2px 2px rgba(0,0,0,0.3); /* Contorno preto grosso */
     z-index: 10;
 }
 
@@ -333,7 +334,7 @@ body {
     top: auto; left: auto; right: auto;
     margin: -1.5rem -1.5rem 1rem -1.5rem;
     background-color: var(--in-progress-blue);
-    color: var(--primary-yellow);
+    color: #ddb30d;
     justify-content: center;
 }
 
@@ -503,3 +504,17 @@ body {
 }
 
 .hidden { display: none !important; }
+
+/* Container de pré-carregamento: 
+   Mantém o elemento na árvore de renderização para carregar o buffer,
+   mas tira da visão do usuário. */
+.off-screen {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    visibility: hidden; 
+    z-index: -1;
+}
