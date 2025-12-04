@@ -536,6 +536,12 @@ function showNextAd() {
         adContainer.appendChild(element);
         
         if (ad.type === 'video') {
+            // CORREÇÃO: A lógica de autoplay para webOS foi revertida.
+            // Esta é a versão correta que tenta com som e faz fallback para mudo.
+            // Isso foi movido de uma versão anterior para cá para unificar a correção.
+            video.muted = false;
+            video.volume = 1.0;
+
             handleVideoAd(element, ad);
         } else {
             handleImageAd(element, ad);
@@ -548,7 +554,6 @@ function showNextAd() {
 
 function handleVideoAd(video, ad) {
     // 1. Garante que o vídeo esteja configurado para autoplay em ambientes restritivos (como webOS)
-    video.muted = true;
     video.loop = false; // Garante que o onended será chamado
     video.playsInline = true;
     video.currentTime = 0;
@@ -556,17 +561,20 @@ function handleVideoAd(video, ad) {
     // 2. Define os handlers de eventos
     video.onended = () => hideAdAndResume();
     video.onerror = (e) => {
-        console.error("Erro vídeo:", e);
+        console.error("Erro ao reproduzir vídeo:", e);
         hideAdAndResume();
     };
 
     // 3. Tenta iniciar a reprodução
     const playPromise = video.play();
     if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.error("Autoplay do vídeo falhou:", error);
-            // Se a reprodução falhar mesmo com as configurações corretas, pula para o próximo.
-            hideAdAndResume();
+        playPromise.catch(error => { // Fallback para autoplay bloqueado
+            console.warn("Autoplay com som bloqueado. Tentando no modo mudo.", error);
+            video.muted = true;
+            video.play().catch(finalError => {
+                console.error("Autoplay falhou completamente, mesmo no modo mudo.", finalError);
+                hideAdAndResume();
+            });
         });
     }
 }
