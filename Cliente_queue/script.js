@@ -484,19 +484,24 @@ function showNextAd() {
     const ad = ads[currentAdIndex];
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
-    let element;
+    let element = null;
+    const preloadedElement = document.getElementById(`preload-${ad.id}`);
+
     if (ad.type === 'video') {
-        element = document.createElement('video');
-        element.src = ad.url;
-        element.playsInline = true;
-        element.className = "ad-content";
+        if (preloadedElement) {
+            element = preloadedElement; // Reutiliza o elemento pré-carregado
+        } else {
+            element = document.createElement('video');
+            element.src = ad.url;
+            element.playsInline = true;
+        }
     } else {
         element = document.createElement('img');
         element.src = ad.url;
-        element.className = "ad-content";
     }
 
     ScrollManager.pauseAll();
+    element.className = "ad-content"; // Garante a classe correta
     
     // 1. Esconde o Dashboard
     queueContainer.classList.add('hidden');
