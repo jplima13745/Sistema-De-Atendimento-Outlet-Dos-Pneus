@@ -72,6 +72,7 @@ async function initializeSystem() {
     
     // 2. Inicia o ciclo explicitamente APÓS ter dados
     if (ads.length > 0) {
+        preloadNextAd();
         startAdCycle();
     }
 }
@@ -186,10 +187,13 @@ function renderDisplay() {
         vehicle.inAlignmentQueue = true;
     });
 
-    const waitingForAlignment = alignmentQueue.filter(car => car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS);
+    // CORREÇÃO: A lógica de ordenação deve ser idêntica à da fila espelho.
+    // A ordenação deve acontecer antes de atribuir a posição.
+    const waitingForAlignment = alignmentQueue.filter(car => 
+        car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS
+    );
     waitingForAlignment.sort((a, b) => {
-        const getPriority = (s) => s === STATUS_ATTENDING ? 1 : (s === STATUS_WAITING ? 2 : 3);
-        return getPriority(a.status) - getPriority(b.status);
+        return (a.timestamp?.toDate() || 0) - (b.timestamp?.toDate() || 0);
     });
     waitingForAlignment.forEach((car, index) => {
         getVehicle(car.licensePlate).alignmentPosition = index + 1;
@@ -457,6 +461,38 @@ async function fetchAds() {
     }
 }
 
+// PRÉ-RENDERIZA O PRÓXIMO ANÚNCIO (Buffer)
+function preloadNextAd() {
+    if (!ads || ads.length === 0) return;
+
+    const preloadContainer = document.getElementById('preload-container');
+    if (!preloadContainer) return;
+
+    preloadContainer.innerHTML = ''; 
+    pendingAdElement = null;
+
+    const ad = ads[currentAdIndex]; 
+
+    console.log(`Pré-carregando background: ${ad.title || 'Anúncio'} (${ad.type})`);
+
+    let element;
+    if (ad.type === 'video') {
+        element = document.createElement('video');
+        element.src = ad.url;
+        element.muted = true; 
+        element.playsInline = true;
+        element.preload = "auto";
+        element.className = "ad-content";
+    } else {
+        element = document.createElement('img');
+        element.src = ad.url;
+        element.className = "ad-content";
+    }
+
+    preloadContainer.appendChild(element);
+    pendingAdElement = element;
+}
+
 function startAdCycle() {
     if (adCycleTimeout) clearTimeout(adCycleTimeout);
     
@@ -479,20 +515,12 @@ function showNextAd() {
         return;
     }
     
-    const ad = ads[currentAdIndex];
-    let element;
-
-    if (ad.type === 'video') {
-        element = document.createElement('video');
-        element.src = ad.url;
-        element.playsInline = true;
-        element.className = "ad-content";
-    } else {
-        element = document.createElement('img');
-        element.src = ad.url;
-        element.className = "ad-content";
+    if (!pendingAdElement) {
+        preloadNextAd();
     }
-
+    
+    const element = pendingAdElement;
+    const ad = ads[currentAdIndex];
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
     ScrollManager.pauseAll();
@@ -504,43 +532,41 @@ function showNextAd() {
     adContainer.innerHTML = ''; 
     adContainer.classList.remove('hidden');
 
-    adContainer.appendChild(element);
-
-    if (ad.type === 'video') {
-        handleVideoAd(element, ad);
+    if (element) {
+        adContainer.appendChild(element);
+        
+        if (ad.type === 'video') {
+            handleVideoAd(element, ad);
+        } else {
+            handleImageAd(element, ad);
+        }
     } else {
-        handleImageAd(element, ad);
+        console.error("Falha ao recuperar buffer. Pulando...");
+        hideAdAndResume();
     }
 }
 
 function handleVideoAd(video, ad) {
-    // 1. Reseta o vídeo para garantir que comece do zero
+    // 1. Garante que o vídeo esteja configurado para autoplay em ambientes restritivos (como webOS)
+    video.muted = true;
+    video.loop = false; // Garante que o onended será chamado
+    video.playsInline = true;
     video.currentTime = 0;
-    
-    // 2. Tenta ativar o som explicitamente
-    video.volume = 1.0;
-    video.muted = false;
-    
+
+    // 2. Define os handlers de eventos
     video.onended = () => hideAdAndResume();
     video.onerror = (e) => {
         console.error("Erro vídeo:", e);
         hideAdAndResume();
     };
 
-    // 3. Tenta tocar com som
+    // 3. Tenta iniciar a reprodução
     const playPromise = video.play();
-    
     if (playPromise !== undefined) {
         playPromise.catch(error => {
-            console.warn("Autoplay com som bloqueado pelo navegador. Tentando mudo...", error);
-            
-            // FALLBACK: Se o navegador bloquear o som (porque ninguém clicou na tela),
-            // ele toca mudo para não travar o sistema.
-            video.muted = true;
-            video.play().catch(() => {
-                console.error("Autoplay falhou totalmente.");
-                hideAdAndResume();
-            });
+            console.error("Autoplay do vídeo falhou:", error);
+            // Se a reprodução falhar mesmo com as configurações corretas, pula para o próximo.
+            hideAdAndResume();
         });
     }
 }
@@ -572,6 +598,7 @@ function hideAdAndResume() {
     ScrollManager.resumeAll();
 
     updateAllExternalData().then(() => {
+        preloadNextAd();
         startAdCycle();
     });
 }
