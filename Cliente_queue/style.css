@@ -126,9 +126,8 @@ body {
     left: 0;
     right: 0;
     background-color: var(--in-progress-blue);
-    color: #fbd230;
+    color: #fbcb0c;
     border-radius: 6px 6px 0 0;
-    text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 2px 2px rgba(0,0,0,0.3);
     z-index: 10;
 }
 
@@ -252,9 +251,9 @@ body {
 }
 
 .progress-item .service-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--light-text);
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--dark-text);
 }
 
 /* Status e Bolinha */
@@ -268,13 +267,18 @@ body {
 }
 
 .service-status-text {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 700;
     color: var(--in-progress-blue);
     white-space: nowrap;
 }
 
-.service-status-text.in-progress { color: #E6A200; }
+.service-status-text.in-progress {
+    color: #f89500; /* Cor do preenchimento do texto */
+    
+   
+}
+
 .service-status-text.in-queue { color: var(--danger-red); }
 .service-status-text.completed { color: var(--success-green); }
 
@@ -320,8 +324,8 @@ body {
     position: relative;
     top: auto; left: auto; right: auto;
     margin: -1.5rem -1.5rem 1rem -1.5rem;
-    background-color: var(--in-progress-blue);
-    color: #ddb30d;
+    background-color: var(--in-progress-blue); /* Mantém o fundo azul */
+    color: #fbcb0c;
     justify-content: center;
 }
 
@@ -381,7 +385,7 @@ body {
 
 .promotions-sidebar .section-header {
     background-color: var(--in-progress-blue);
-    color: #fcdb83;
+    color: #fbcb0c;
     padding: 1rem;
     position: relative;
     flex-shrink: 0;

@@ -193,11 +193,11 @@ function renderDisplay() {
             const jobType = job.type || job.serviceType || '';
             if (jobType.includes('Serviço Geral') || job.statusGS) {
                 const isCompleted = [STATUS_GS_FINISHED, 'Concluído', 'Serviço Geral Concluído'].includes(job.statusGS) || job.status === STATUS_GS_FINISHED || job.status === STATUS_READY;
-                vehicle.services.general = { name: 'Elevador', completed: isCompleted };
+                vehicle.services.general = { name: 'ELEVADOR', completed: isCompleted };
             }
             if (jobType.includes('Pneus') || job.statusTS) {
                 const isCompleted = ['Concluído', 'Serviço Pneus Concluído', STATUS_TS_FINISHED].includes(job.statusTS) || vehicle.status === STATUS_READY;
-                vehicle.services.tires = { name: 'Borracheiro', completed: isCompleted };
+                vehicle.services.tires = { name: 'BORRACHARIA', completed: isCompleted };
             }
         }
     });
@@ -214,7 +214,7 @@ function renderDisplay() {
         if (!vehicle.id) vehicle.id = car.id;
         
         const isAlignmentCompleted = [STATUS_READY, STATUS_ALIGNMENT_FINISHED, 'Pronto para Pagamento', 'Finalizado'].includes(car.status);
-        vehicle.services.alignment = { name: 'Alinhamento', completed: isAlignmentCompleted, status: car.status };
+        vehicle.services.alignment = { name: 'ALINHAMENTO', completed: isAlignmentCompleted, status: car.status };
         
         let priority = car.status === STATUS_ATTENDING ? 1 : (car.status === STATUS_WAITING ? 2 : 3);
         if (priority < vehicle.priority) vehicle.priority = priority;
@@ -267,14 +267,14 @@ function renderServiceList(items) {
                 if (service.completed) {
                     statusText = 'Concluído';
                 } else if (service.status === STATUS_ATTENDING) {
-                    statusText = 'Atendendo'; 
+                    statusText = 'ATENDENDO'; 
                     statusTextClass = 'in-progress';
                 } else {
                     statusText = `${item.alignmentPosition}º Fila`;
                     statusTextClass = 'in-queue';
                 }
             } else {
-                statusText = service.completed ? 'Concluído' : 'Atendendo';
+                statusText = service.completed ? 'Concluído' : 'ATENDENDO';
                 if (!service.completed) statusTextClass = 'in-progress';
             }
             
