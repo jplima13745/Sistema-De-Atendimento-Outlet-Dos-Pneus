@@ -73,7 +73,6 @@ async function initializeSystem() {
     
     // 2. Inicia o ciclo explicitamente APÓS ter dados
     if (ads.length > 0) {
-        preloadNextAd();
         startAdCycle();
     }
 }
@@ -492,42 +491,6 @@ async function fetchAds() {
     }
 }
 
-// PRÉ-RENDERIZA O PRÓXIMO ANÚNCIO (Buffer)
-function preloadNextAd() {
-    if (!ads || ads.length === 0) return;
-
-    const preloadContainer = document.getElementById('preload-container');
-    if (!preloadContainer) return;
-
-    preloadContainer.innerHTML = ''; 
-    pendingAdElement = null;
-
-    const ad = ads[currentAdIndex]; 
-
-    console.log(`Pré-carregando background: ${ad.title || 'Anúncio'} (${ad.type})`);
-
-    let element;
-    if (ad.type === 'video') {
-        element = document.createElement('video');
-        element.src = ad.url;
-        
-        // MUDANÇA IMPORTANTE: Carregamos mudo no buffer para o navegador 
-        // priorizar o download sem tentar tocar áudio escondido.
-        element.muted = true; 
-        
-        element.playsInline = true;
-        element.preload = "auto";
-        element.className = "ad-content";
-    } else {
-        element = document.createElement('img');
-        element.src = ad.url;
-        element.className = "ad-content";
-    }
-
-    preloadContainer.appendChild(element);
-    pendingAdElement = element;
-}
-
 function startAdCycle() {
     if (adCycleTimeout) clearTimeout(adCycleTimeout);
     
@@ -544,14 +507,25 @@ function showNextAd() {
         adCycleTimeout = null;
     }
 
-    // ... (verificações de lista vazia continuam iguais)
-
-    if (!pendingAdElement) {
-        preloadNextAd();
+    if (!ads || ads.length === 0) {
+        console.log("Nenhum anúncio para exibir, retomando ciclo.");
+        hideAdAndResume();
+        return;
     }
     
-    const element = pendingAdElement;
     const ad = ads[currentAdIndex];
+    let element;
+
+    if (ad.type === 'video') {
+        element = document.createElement('video');
+        element.src = ad.url;
+        element.playsInline = true;
+        element.className = "ad-content";
+    } else {
+        element = document.createElement('img');
+        element.src = ad.url;
+        element.className = "ad-content";
+    }
 
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
@@ -564,23 +538,12 @@ function showNextAd() {
     adContainer.innerHTML = ''; 
     adContainer.classList.remove('hidden');
 
-    if (element) {
-        // 3. Move o elemento e FORÇA estilos para garantir visibilidade
-        adContainer.appendChild(element);
-        
-        // REFORÇO: Garante que o elemento movido fique visível e ocupe espaço
-        element.style.display = 'block';
-        element.style.width = '100%';
-        element.style.height = '100%';
+    adContainer.appendChild(element);
 
-        if (ad.type === 'video') {
-            handleVideoAd(element, ad);
-        } else {
-            handleImageAd(element, ad);
-        }
+    if (ad.type === 'video') {
+        handleVideoAd(element, ad);
     } else {
-        console.error("Falha ao recuperar buffer. Pulando...");
-        hideAdAndResume();
+        handleImageAd(element, ad);
     }
 }
 
@@ -639,15 +602,10 @@ function hideAdAndResume() {
     adContainer.classList.add('hidden');
     queueContainer.classList.remove('hidden');
     adContainer.innerHTML = ''; 
-    pendingAdElement = null; // Limpa o buffer antigo
     
     ScrollManager.resumeAll();
 
-    // 1. Atualiza dados (sem resetar índice)
-    // 2. Carrega o PRÓXIMO anúncio no buffer
-    // 3. Inicia o timer
     updateAllExternalData().then(() => {
-        preloadNextAd(); 
         startAdCycle();
     });
 }
