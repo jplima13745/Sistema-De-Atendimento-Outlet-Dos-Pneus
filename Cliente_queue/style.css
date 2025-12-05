@@ -71,6 +71,22 @@ body {
     color: var(--primary-yellow);
 }
 
+.title-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* IMAGEM AO LADO DO TÍTULO "OUTLET" NO CABEÇALHO */
+.header-image-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-image-container img {
+    height: 65px; /* Altura da imagem */
+}
 .datetime {
     font-size: 1.2rem;
     font-weight: 500;
@@ -283,6 +299,15 @@ body {
 .service-status-text.in-queue { color: var(--danger-red); }
 .service-status-text.completed { color: var(--success-green); }
 
+/* Animação de zoom sutil para a imagem do rodapé */
+@keyframes subtle-zoom {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
 @keyframes anti-sleep-pulse {
   from { opacity: 1; }
   to   { opacity: 0.999; }
@@ -318,7 +343,7 @@ body {
     background-color: #ffffff;
     border: 1px solid var(--in-progress-blue);
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1.5rem 1.5rem 3rem; /* Aumentei o padding inferior para 3rem */
     min-width: 220px;
     max-width: 220px;
     display: flex;
@@ -467,6 +492,26 @@ body {
     font-style: italic;
     font-size: 0.8rem;
 }
+
+/* IMAGEM NA PARTE INFERIOR DA ABA "PRONTOS P/ RETIRADA" */
+/* --- IMAGEM NO RODAPÉ DOS CONCLUÍDOS --- */
+.completed-footer-image {
+    margin-top: auto; /* Empurra a imagem para o final do contêiner flex */
+    padding-top: 0.5rem; /* Espaçamento acima da imagem */
+    text-align: center;
+    flex-shrink: 0; /* Impede que a imagem encolha */
+}
+
+.completed-footer-image img {
+    max-height: 150px; /* Define uma altura máxima para a imagem */
+    width: auto; /* Deixa a largura se ajustar automaticamente */
+    display: block;
+    margin: 0 auto; /* Centraliza a imagem horizontalmente */
+    object-fit: contain;
+    transition: opacity 0.3s ease; /* Adiciona uma transição suave */
+    animation: subtle-zoom 5s ease-in-out infinite; /* Adiciona a animação de zoom */
+}
+
 
 /* --- Anúncios e Utilitários (Otimizado) --- */
 
