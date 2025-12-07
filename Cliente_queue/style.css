@@ -32,6 +32,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    animation: anti-sleep-pulse 10s infinite alternate; /* Impede a hibernação do navegador */
     overflow: hidden;
 }
 
@@ -70,6 +71,22 @@ body {
     color: var(--primary-yellow);
 }
 
+.title-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* IMAGEM AO LADO DO TÍTULO "OUTLET" NO CABEÇALHO */
+.header-image-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-image-container img {
+    height: 65px; /* Altura da imagem */
+}
 .datetime {
     font-size: 1.2rem;
     font-weight: 500;
@@ -126,9 +143,8 @@ body {
     left: 0;
     right: 0;
     background-color: var(--in-progress-blue);
-    color: #fbd230;
+    color: #fbcb0c;
     border-radius: 6px 6px 0 0;
-    text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0px 2px 2px rgba(0,0,0,0.3);
     z-index: 10;
 }
 
@@ -269,12 +285,6 @@ body {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--light-text);
-    
-    /* TRAVA DE SEGURANÇA: Nomes de setores longos cortam com (...) */
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
 }
 
 /* Status e Bolinha */
@@ -289,7 +299,7 @@ body {
 }
 
 .service-status-text {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 700;
     color: var(--in-progress-blue);
     
@@ -300,9 +310,28 @@ body {
     text-align: center;
 }
 
-.service-status-text.in-progress { color: #E6A200; }
+.service-status-text.in-progress {
+    color: #f89500; /* Cor do preenchimento do texto */
+    
+   
+}
+
 .service-status-text.in-queue { color: var(--danger-red); }
 .service-status-text.completed { color: var(--success-green); }
+
+/* Animação de zoom sutil para a imagem do rodapé */
+@keyframes subtle-zoom {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+@keyframes anti-sleep-pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.999; }
+}
 
 @keyframes pulse {
     0%, 100% { transform: scale(1); }
@@ -334,7 +363,7 @@ body {
     background-color: #ffffff;
     border: 1px solid var(--in-progress-blue);
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1.5rem 1.5rem 3rem; /* Aumentei o padding inferior para 3rem */
     min-width: 220px;
     max-width: 220px;
     display: flex;
@@ -346,8 +375,8 @@ body {
     position: relative;
     top: auto; left: auto; right: auto;
     margin: -1.5rem -1.5rem 1rem -1.5rem;
-    background-color: var(--in-progress-blue);
-    color: #ddb30d;
+    background-color: var(--in-progress-blue); /* Mantém o fundo azul */
+    color: #fbcb0c;
     justify-content: center;
 }
 
@@ -407,7 +436,7 @@ body {
 
 .promotions-sidebar .section-header {
     background-color: var(--in-progress-blue);
-    color: #fcdb83;
+    color: #fbcb0c;
     padding: 1rem;
     position: relative;
     flex-shrink: 0;
@@ -483,6 +512,26 @@ body {
     font-style: italic;
     font-size: 0.8rem;
 }
+
+/* IMAGEM NA PARTE INFERIOR DA ABA "PRONTOS P/ RETIRADA" */
+/* --- IMAGEM NO RODAPÉ DOS CONCLUÍDOS --- */
+.completed-footer-image {
+    margin-top: auto; /* Empurra a imagem para o final do contêiner flex */
+    padding-top: 0.5rem; /* Espaçamento acima da imagem */
+    text-align: center;
+    flex-shrink: 0; /* Impede que a imagem encolha */
+}
+
+.completed-footer-image img {
+    max-height: 150px; /* Define uma altura máxima para a imagem */
+    width: auto; /* Deixa a largura se ajustar automaticamente */
+    display: block;
+    margin: 0 auto; /* Centraliza a imagem horizontalmente */
+    object-fit: contain;
+    transition: opacity 0.3s ease; /* Adiciona uma transição suave */
+    animation: subtle-zoom 5s ease-in-out infinite; /* Adiciona a animação de zoom */
+}
+
 
 /* --- Anúncios e Utilitários (Otimizado) --- */
 

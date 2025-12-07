@@ -39,15 +39,14 @@ let serviceJobs = [];
 let alignmentQueue = [];
 let ads = [];
 let hiddenItemIds = new Set();
-const PROMOTIONS_SCROLL_WAIT = 3 * 1000; 
-const ONGOING_SERVICES_SCROLL_WAIT = 10000; 
+const PROMOTIONS_SCROLL_WAIT = 1 * 1000; // Reduzido para 4s
+const ONGOING_SERVICES_SCROLL_WAIT = 1 * 1000; // Reduzido para 5s
 
 const API_BASE_URL = 'https://marketing-api.lucasscosilva.workers.dev';
 let adCycleTimeout = null;
 let globalImageDuration = 10;
 let queueDisplayInterval = 120 * 1000; 
 let currentAdIndex = 0;
-let pendingAdElement = null; // Buffer para pré-renderização
 
 const queueContainer = document.getElementById('queue-container');
 const adContainer = document.getElementById('ad-container');
@@ -66,48 +65,13 @@ function waitForFirebaseAuth() {
 async function initializeSystem() {
     setupClock();
     setupRealtimeListeners();
-    initAntiHibernation(); 
 
     // 1. Carrega configurações e anúncios
     await updateAllExternalData(); 
     
     // 2. Inicia o ciclo explicitamente APÓS ter dados
     if (ads.length > 0) {
-        preloadNextAd();
         startAdCycle();
-    }
-}
-
-// --- Anti-Hibernação ---
-function initAntiHibernation() {
-    const noSleepVideo = document.getElementById('no-sleep-video');
-    if (noSleepVideo) {
-        const playAttempt = () => {
-            noSleepVideo.play().then(() => {
-                console.log("Anti-hibernação (Pixel Loop): Ativo");
-            }).catch(() => {
-                window.addEventListener('click', playAttempt, { once: true });
-            });
-        };
-        playAttempt();
-    }
-
-    if ('wakeLock' in navigator) {
-        let wakeLock = null;
-        const requestWakeLock = async () => {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('Anti-hibernação (WakeLock API): Ativo');
-            } catch (err) {
-                console.log(`Erro Wake Lock: ${err.name}, ${err.message}`);
-            }
-        };
-        requestWakeLock();
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && wakeLock === null) {
-                requestWakeLock();
-            }
-        });
     }
 }
 
@@ -193,11 +157,11 @@ function renderDisplay() {
             const jobType = job.type || job.serviceType || '';
             if (jobType.includes('Serviço Geral') || job.statusGS) {
                 const isCompleted = [STATUS_GS_FINISHED, 'Concluído', 'Serviço Geral Concluído'].includes(job.statusGS) || job.status === STATUS_GS_FINISHED || job.status === STATUS_READY;
-                vehicle.services.general = { name: 'Elevador', completed: isCompleted };
+                vehicle.services.general = { name: 'ELEVADOR', completed: isCompleted };
             }
             if (jobType.includes('Pneus') || job.statusTS) {
                 const isCompleted = ['Concluído', 'Serviço Pneus Concluído', STATUS_TS_FINISHED].includes(job.statusTS) || vehicle.status === STATUS_READY;
-                vehicle.services.tires = { name: 'Borracheiro', completed: isCompleted };
+                vehicle.services.tires = { name: 'BORRACHARIA', completed: isCompleted };
             }
         }
     });
@@ -214,17 +178,20 @@ function renderDisplay() {
         if (!vehicle.id) vehicle.id = car.id;
         
         const isAlignmentCompleted = [STATUS_READY, STATUS_ALIGNMENT_FINISHED, 'Pronto para Pagamento', 'Finalizado'].includes(car.status);
-        vehicle.services.alignment = { name: 'Alinhamento', completed: isAlignmentCompleted, status: car.status };
+        vehicle.services.alignment = { name: 'ALINHAMENTO', completed: isAlignmentCompleted, status: car.status };
         
         let priority = car.status === STATUS_ATTENDING ? 1 : (car.status === STATUS_WAITING ? 2 : 3);
         if (priority < vehicle.priority) vehicle.priority = priority;
         vehicle.inAlignmentQueue = true;
     });
 
-    const waitingForAlignment = alignmentQueue.filter(car => car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS);
+    // CORREÇÃO: A lógica de ordenação deve ser idêntica à da fila espelho.
+    // A ordenação deve acontecer antes de atribuir a posição.
+    const waitingForAlignment = alignmentQueue.filter(car => 
+        car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS
+    );
     waitingForAlignment.sort((a, b) => {
-        const getPriority = (s) => s === STATUS_ATTENDING ? 1 : (s === STATUS_WAITING ? 2 : 3);
-        return getPriority(a.status) - getPriority(b.status);
+        return (a.timestamp?.toDate() || 0) - (b.timestamp?.toDate() || 0);
     });
     waitingForAlignment.forEach((car, index) => {
         getVehicle(car.licensePlate).alignmentPosition = index + 1;
@@ -267,14 +234,14 @@ function renderServiceList(items) {
                 if (service.completed) {
                     statusText = 'Concluído';
                 } else if (service.status === STATUS_ATTENDING) {
-                    statusText = 'Atendendo'; 
+                    statusText = 'ATENDENDO'; 
                     statusTextClass = 'in-progress';
                 } else {
                     statusText = `${item.alignmentPosition}º Fila`;
                     statusTextClass = 'in-queue';
                 }
             } else {
-                statusText = service.completed ? 'Concluído' : 'Atendendo';
+                statusText = service.completed ? 'Concluído' : 'ATENDENDO';
                 if (!service.completed) statusTextClass = 'in-progress';
             }
             
@@ -374,15 +341,15 @@ const ScrollManager = {
         };
         const scrollForward = () => {
             if (this.isPaused) return;
-            const duration = isHorizontal ? 20000 : (element.id === 'promotions-list' ? 2000 : 6000); 
+            const duration = isHorizontal ? 8000 : (element.id === 'promotions-list' ? 3000 : 5000); 
             const target = isHorizontal ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight;
             this.smoothScroll(element, target, duration, scrollBackward, isHorizontal);
         };
         const scrollBackward = () => {
             if (this.isPaused) return;
-            setTimeout(() => {
+            setTimeout(() => { // Pausa antes de voltar ao início
                 this.smoothScroll(element, 0, 2500, startCycle, isHorizontal);
-            }, 5000);
+            }, 3000); // Reduzido para 3s
         };
         instance.start = startCycle;
         this.instances.push(instance);
@@ -492,42 +459,6 @@ async function fetchAds() {
     }
 }
 
-// PRÉ-RENDERIZA O PRÓXIMO ANÚNCIO (Buffer)
-function preloadNextAd() {
-    if (!ads || ads.length === 0) return;
-
-    const preloadContainer = document.getElementById('preload-container');
-    if (!preloadContainer) return;
-
-    preloadContainer.innerHTML = ''; 
-    pendingAdElement = null;
-
-    const ad = ads[currentAdIndex]; 
-
-    console.log(`Pré-carregando background: ${ad.title || 'Anúncio'} (${ad.type})`);
-
-    let element;
-    if (ad.type === 'video') {
-        element = document.createElement('video');
-        element.src = ad.url;
-        
-        // MUDANÇA IMPORTANTE: Carregamos mudo no buffer para o navegador 
-        // priorizar o download sem tentar tocar áudio escondido.
-        element.muted = true; 
-        
-        element.playsInline = true;
-        element.preload = "auto";
-        element.className = "ad-content";
-    } else {
-        element = document.createElement('img');
-        element.src = ad.url;
-        element.className = "ad-content";
-    }
-
-    preloadContainer.appendChild(element);
-    pendingAdElement = element;
-}
-
 function startAdCycle() {
     if (adCycleTimeout) clearTimeout(adCycleTimeout);
     
@@ -544,18 +475,33 @@ function showNextAd() {
         adCycleTimeout = null;
     }
 
-    // ... (verificações de lista vazia continuam iguais)
-
-    if (!pendingAdElement) {
-        preloadNextAd();
+    if (!ads || ads.length === 0) {
+        console.log("Nenhum anúncio para exibir, retomando ciclo.");
+        hideAdAndResume();
+        return;
     }
     
-    const element = pendingAdElement;
     const ad = ads[currentAdIndex];
-
     currentAdIndex = (currentAdIndex + 1) % ads.length;
 
+    let element = null;
+    const preloadedElement = document.getElementById(`preload-${ad.id}`);
+
+    if (ad.type === 'video') {
+        if (preloadedElement) {
+            element = preloadedElement; // Reutiliza o elemento pré-carregado
+        } else {
+            element = document.createElement('video');
+            element.src = ad.url;
+            element.playsInline = true;
+        }
+    } else {
+        element = document.createElement('img');
+        element.src = ad.url;
+    }
+
     ScrollManager.pauseAll();
+    element.className = "ad-content"; // Garante a classe correta
     
     // 1. Esconde o Dashboard
     queueContainer.classList.add('hidden');
@@ -565,51 +511,36 @@ function showNextAd() {
     adContainer.classList.remove('hidden');
 
     if (element) {
-        // 3. Move o elemento e FORÇA estilos para garantir visibilidade
         adContainer.appendChild(element);
-        
-        // REFORÇO: Garante que o elemento movido fique visível e ocupe espaço
-        element.style.display = 'block';
-        element.style.width = '100%';
-        element.style.height = '100%';
 
-        if (ad.type === 'video') {
-            handleVideoAd(element, ad);
-        } else {
-            handleImageAd(element, ad);
-        }
-    } else {
-        console.error("Falha ao recuperar buffer. Pulando...");
-        hideAdAndResume();
+        if (ad.type === 'video') handleVideoAd(element, ad);
+        else handleImageAd(element, ad);
     }
 }
 
 function handleVideoAd(video, ad) {
-    // 1. Reseta o vídeo para garantir que comece do zero
-    video.currentTime = 0;
-    
-    // 2. Tenta ativar o som explicitamente
+    // 1. Garante que o vídeo esteja configurado para autoplay em ambientes restritivos (como webOS)
+    video.muted = false; // Tenta tocar com som primeiro
     video.volume = 1.0;
-    video.muted = false;
-    
+    video.loop = false; // Garante que o onended será chamado
+    video.playsInline = true;
+    video.currentTime = 0;
+
+    // 2. Define os handlers de eventos
     video.onended = () => hideAdAndResume();
     video.onerror = (e) => {
-        console.error("Erro vídeo:", e);
+        console.error("Erro ao reproduzir vídeo:", e);
         hideAdAndResume();
     };
 
-    // 3. Tenta tocar com som
+    // 3. Tenta iniciar a reprodução
     const playPromise = video.play();
-    
     if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.warn("Autoplay com som bloqueado pelo navegador. Tentando mudo...", error);
-            
-            // FALLBACK: Se o navegador bloquear o som (porque ninguém clicou na tela),
-            // ele toca mudo para não travar o sistema.
+        playPromise.catch(error => { // Fallback para autoplay bloqueado
+            console.warn("Autoplay com som bloqueado. Tentando no modo mudo.", error);
             video.muted = true;
-            video.play().catch(() => {
-                console.error("Autoplay falhou totalmente.");
+            video.play().catch(finalError => {
+                console.error("Autoplay falhou completamente, mesmo no modo mudo.", finalError);
                 hideAdAndResume();
             });
         });
@@ -618,7 +549,6 @@ function handleVideoAd(video, ad) {
 
 function handleImageAd(img, ad) {
     let finalDuration = globalImageDuration;
-
     if (ad.duration) {
         const specificDuration = parseInt(ad.duration, 10);
         if (!isNaN(specificDuration) && specificDuration > 0) {
@@ -639,15 +569,10 @@ function hideAdAndResume() {
     adContainer.classList.add('hidden');
     queueContainer.classList.remove('hidden');
     adContainer.innerHTML = ''; 
-    pendingAdElement = null; // Limpa o buffer antigo
     
     ScrollManager.resumeAll();
 
-    // 1. Atualiza dados (sem resetar índice)
-    // 2. Carrega o PRÓXIMO anúncio no buffer
-    // 3. Inicia o timer
     updateAllExternalData().then(() => {
-        preloadNextAd(); 
         startAdCycle();
     });
 }

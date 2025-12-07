@@ -13,7 +13,13 @@
         <header class="header">
             <div class="logo-container">
                 <img src="/Cliente_queue/IMG/LOGO%20OUTLET.png" alt="Outlet dos Pneus Logo">
-                <h1 class="header-title">TELA DE ACOMPANHAMENTO <span class="outlet-text">OUTLET</span></h1>
+                <div class="title-container">
+                    <h1 class="header-title">TELA DE ACOMPANHAMENTO <span class="outlet-text">OUTLET</span></h1>
+                    <div class="header-image-container">
+                        <!-- IMAGEM AO LADO DO TÍTULO "OUTLET" NO CABEÇALHO -->
+                        <img src="/Cliente_queue/IMG/SELO.png" alt="Selo de Oferta">
+                    </div>
+                </div>
             </div>
             <div class="datetime">
                 <i class="fa-regular fa-calendar-days"></i>
@@ -41,13 +47,18 @@
                 </div>
                 <div id="completed-services-cards" class="cards-container-completed">
                 </div>
+                <!-- NOVO: Container para a imagem no rodapé da seção -->
+                <div class="completed-footer-image">
+                    <!-- IMAGEM NA PARTE INFERIOR DA ABA "PRONTOS P/ RETIRADA" -->
+                    <img src="/Cliente_queue/IMG/PAPAI-NOEL-SEMFUNDO.png" alt="Papai Noel Outlet dos Pneus">
+                </div>
             </section>
 
             <aside class="promotions-column">
                 <div class="section-card promotions-sidebar">
                     <div class="section-header">
                         <i class="fa-solid fa-tags"></i>
-                        <span>PROMOÇÕES</span>
+                        <span>PROMOÇÕES 💸</span>
                     </div>
                     <div id="promotions-list" class="promotions-list">
                     </div>
@@ -56,12 +67,6 @@
         </main>
     </div>
 
-    <div id="preload-container" class="off-screen"></div>
-
-    <video id="no-sleep-video" playsinline muted loop style="opacity: 0; position: absolute; top: 0; left: 0; pointer-events: none; width: 1px; height: 1px;">
-        <source src="data:video/mp4;base64,AAAAHGZ0eXBNNGEgAAAAIGppdnVyAAAAADEuMi4wAAAABG1kYXQAAAAAAAAAAQAqZ2tiYWQAAAAAAAAAAAAAAAEAAAAAoXRyYWsuAAAAMHRraGQAAAABMzMzMzMzMzMAAAABAAAAAAAAAAAAAAABAAAAAQAAAAEAAAAAAAJlZWR0cQAAACRlbHN0AAAAAAAAAAEAAu5gAAAAAAABAAAAAAABAAAAAAACbmdrdgAAACxjb2xybgAAAAEAAAAAAAAAAQAAAAEAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAFzb3VuZAAAAF1zb3VuZGEAAAAxZGF0YQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAABh0bWVkaWEAAAAZMDcuMTAuMDhUMjA6MTE6MDMAAAAAAAJkbW9vdgAAAGxtdmhkAAAAATMzMzMzMzMzAAABAAAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" type="video/mp4">
-    </video>
-    
     <div id="ad-container" class="hidden"></div>
     <script type="module" src="script.js"></script>
 </body>
