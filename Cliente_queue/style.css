@@ -178,7 +178,7 @@ body {
     display: flex;
 }
 
-/* --- CARD REESTRUTURADO (ATUALIZADO) --- */
+/* --- CARD REESTRUTURADO (COM PROTEÇÃO DE OVERFLOW) --- */
 .service-card {
     background-color: var(--background-color);
     border: 1px solid var(--primary-yellow);
@@ -190,11 +190,11 @@ body {
     flex-direction: column; 
     justify-content: flex-start;
     box-shadow: 0 3px 6px rgba(0,0,0,0.08);
-    /* TRAVA DE SEGURANÇA: Garante que nada vaze do card */
-    overflow: hidden;
+    /* TRAVA DE SEGURANÇA: Nada sai da borda do card */
+    overflow: hidden; 
 }
 
-/* Topo do Card (ATUALIZADO) */
+/* Topo do Card */
 .car-info {
     display: flex;
     flex-direction: column;
@@ -205,7 +205,7 @@ body {
     padding-bottom: 0.4rem;
     border-bottom: 1px solid #e0e0e0;
     margin-bottom: 0.2rem;
-    /* TRAVA DE SEGURANÇA: Permite encolher em Flexbox */
+    /* TRAVA DE SEGURANÇA: Permite o flexbox encolher */
     min-width: 0; 
 }
 
@@ -221,6 +221,7 @@ body {
     text-overflow: ellipsis;
     width: 100%;
     max-width: 100%;
+    display: block;
 }
 
 .service-card .car-plate {
@@ -233,7 +234,7 @@ body {
     letter-spacing: 0.5px;
 }
 
-/* Parte Inferior: Etapas (ATUALIZADO) */
+/* Parte Inferior: Etapas */
 .service-progress {
     display: flex;
     flex-direction: row; 
@@ -253,8 +254,8 @@ body {
     text-align: center;
     position: relative;
     
-    /* TRAVA DE SEGURANÇA: Evita que itens expandam demais */
-    min-width: 0;
+    /* TRAVA DE SEGURANÇA: Impede que expanda demais */
+    min-width: 0; 
     overflow: hidden;
     padding: 0 2px;
 }
@@ -285,6 +286,12 @@ body {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--light-text);
+    
+    /* TRAVA DE SEGURANÇA: Nomes de setores longos cortam com (...) */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 /* Status e Bolinha */
@@ -303,17 +310,15 @@ body {
     font-weight: 700;
     color: var(--in-progress-blue);
     
-    /* TRAVA DE SEGURANÇA: Permite quebra de linha controlada */
-    white-space: normal;
+    /* TRAVA DE SEGURANÇA: Controla quebra de linha do status */
+    white-space: normal; /* Permite quebrar linha se necessário */
     line-height: 1.1;
     max-width: 100%;
     text-align: center;
 }
 
 .service-status-text.in-progress {
-    color: #f89500; /* Cor do preenchimento do texto */
-    
-   
+    color: #f89500; 
 }
 
 .service-status-text.in-queue { color: var(--danger-red); }
@@ -321,13 +326,10 @@ body {
 
 /* Animação de zoom sutil para a imagem do rodapé */
 @keyframes subtle-zoom {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
 }
+
 @keyframes anti-sleep-pulse {
   from { opacity: 1; }
   to   { opacity: 0.999; }
@@ -375,7 +377,7 @@ body {
     position: relative;
     top: auto; left: auto; right: auto;
     margin: -1.5rem -1.5rem 1rem -1.5rem;
-    background-color: var(--in-progress-blue); /* Mantém o fundo azul */
+    background-color: var(--in-progress-blue); 
     color: #fbcb0c;
     justify-content: center;
 }
@@ -513,23 +515,22 @@ body {
     font-size: 0.8rem;
 }
 
-/* IMAGEM NA PARTE INFERIOR DA ABA "PRONTOS P/ RETIRADA" */
 /* --- IMAGEM NO RODAPÉ DOS CONCLUÍDOS --- */
 .completed-footer-image {
-    margin-top: auto; /* Empurra a imagem para o final do contêiner flex */
-    padding-top: 0.5rem; /* Espaçamento acima da imagem */
+    margin-top: auto; 
+    padding-top: 0.5rem; 
     text-align: center;
-    flex-shrink: 0; /* Impede que a imagem encolha */
+    flex-shrink: 0; 
 }
 
 .completed-footer-image img {
-    max-height: 150px; /* Define uma altura máxima para a imagem */
-    width: auto; /* Deixa a largura se ajustar automaticamente */
+    max-height: 150px; 
+    width: auto; 
     display: block;
-    margin: 0 auto; /* Centraliza a imagem horizontalmente */
+    margin: 0 auto; 
     object-fit: contain;
-    transition: opacity 0.3s ease; /* Adiciona uma transição suave */
-    animation: subtle-zoom 5s ease-in-out infinite; /* Adiciona a animação de zoom */
+    transition: opacity 0.3s ease; 
+    animation: subtle-zoom 5s ease-in-out infinite; 
 }
 
 
@@ -546,10 +547,9 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 9999; /* Garante que fica na frente de tudo */
+    z-index: 9999; 
 }
 
-/* Força o conteúdo a preencher a tela mantendo proporção */
 #ad-container video,
 #ad-container img,
 .ad-content {
@@ -559,25 +559,20 @@ body {
     display: block;
 }
 
-/* CONTAINER DE PRELOAD E ANTI-HIBERNAÇÃO
-   Unificamos as classes para garantir que o navegador baixe o vídeo
-   mesmo sem o usuário ver.
-*/
 #preload-container,
 #no-sleep-video,
 .off-screen {
     position: absolute;
-    top: -9999px; /* Joga para fora da tela */
+    top: -9999px; 
     left: -9999px;
     width: 1px;
     height: 1px;
-    opacity: 0.01; /* Quase invisível, mas o browser processa */
+    opacity: 0.01; 
     overflow: hidden;
     z-index: -1;
-    pointer-events: none; /* O mouse não clica nele */
+    pointer-events: none; 
 }
 
-/* Classe utilitária simples */
 .hidden {
     display: none !important;
 }
