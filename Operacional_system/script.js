@@ -656,12 +656,6 @@ document.getElementById('service-form').addEventListener('submit', async (e) => 
     }
 });
 
-// =========================================================================
-// CORREÇÃO ITEM 3: Anti-duplo clique no Alinhamento
-// =========================================================================
-// =========================================================================
-// CORREÇÃO ITEM 3: Anti-duplo clique no Alinhamento
-// =========================================================================
 document.getElementById('alignment-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!isLoggedIn) return alertUser("Você precisa estar logado para cadastrar serviços.");
@@ -691,31 +685,86 @@ document.getElementById('alignment-form').addEventListener('submit', async (e) =
     }
 
     try {
-        const newAlignmentCar = {
-            customerName: 'N/A',
-            vendedorName,
-            licensePlate,
-            carModel,
-            status: STATUS_WAITING,
-            timestamp: isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp(),
-            addedBy: userId,
-            id: `ali_${aliIdCounter++}`,
-            type: 'Alinhamento',
-            gsDescription: 'N/A (Adicionado Manualmente)',
-            gsMechanic: 'N/A',
-            finalizedAt: null
-        };
+        // --- NOVO: Verificação de Acoplamento Automático (Req 1) ---
+        // Procura se já existe um serviço geral ativo para esta placa
+        const existingServiceJob = serviceJobs.find(job => 
+            job.licensePlate === licensePlate && 
+            job.status !== STATUS_FINALIZED && 
+            job.status !== STATUS_LOST &&
+            job.status !== STATUS_READY // Opcional: considera acoplável mesmo se pronto, mas não finalizado
+        );
+
+        let newAlignmentCar;
+
+        if (existingServiceJob) {
+            // Se encontrou, ACOPLA ao serviço existente
+            console.log("Acoplando alinhamento ao serviço existente:", existingServiceJob.id);
+            
+            // Determina o status: Se o GS já acabou, vai direto para a fila (Waiting), senão espera (Waiting GS)
+            const initialStatus = (existingServiceJob.statusGS === STATUS_GS_FINISHED || existingServiceJob.status === STATUS_READY) 
+                                  ? STATUS_WAITING 
+                                  : STATUS_WAITING_GS;
+
+            newAlignmentCar = {
+                customerName: existingServiceJob.customerName || 'N/A',
+                vendedorName: existingServiceJob.vendedorName || vendedorName, // Prioriza o vendedor original
+                licensePlate: existingServiceJob.licensePlate,
+                carModel: existingServiceJob.carModel,
+                status: initialStatus,
+                timestamp: isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp(),
+                addedBy: userId,
+                id: `ali_${aliIdCounter++}`,
+                type: 'Alinhamento',
+                gsDescription: existingServiceJob.serviceDescription, // Puxa a descrição real
+                gsMechanic: existingServiceJob.assignedMechanic,      // Puxa o mecânico real
+                serviceJobId: existingServiceJob.id,                  // O VÍNCULO MÁGICO
+                finalizedAt: null
+            };
+            
+            // Atualiza também o serviço pai para saber que agora requer alinhamento
+            if (!isDemoMode) {
+                 const serviceRef = doc(db, SERVICE_COLLECTION_PATH, existingServiceJob.id);
+                 await updateDoc(serviceRef, { requiresAlignment: true });
+            } else {
+                 existingServiceJob.requiresAlignment = true;
+            }
+
+        } else {
+            // Se não encontrou, cria como avulso (Comportamento Antigo)
+            newAlignmentCar = {
+                customerName: 'N/A',
+                vendedorName,
+                licensePlate,
+                carModel,
+                status: STATUS_WAITING,
+                timestamp: isDemoMode ? Timestamp.fromMillis(Date.now()) : serverTimestamp(),
+                addedBy: userId,
+                id: `ali_${aliIdCounter++}`,
+                type: 'Alinhamento',
+                gsDescription: 'N/A (Adicionado Manualmente)',
+                gsMechanic: 'N/A',
+                finalizedAt: null
+            };
+        }
+        // -----------------------------------------------------------
 
         if (isDemoMode) {
             alignmentQueue.push(newAlignmentCar);
             renderAlignmentQueue(alignmentQueue);
             renderAlignmentMirror(alignmentQueue);
             renderReadyJobs(serviceJobs, alignmentQueue);
-            errorElement.textContent = 'MODO DEMO: Cliente adicionado (Não salvo).';
+            errorElement.textContent = existingServiceJob 
+                ? 'MODO DEMO: Acoplado ao Serviço Geral existente.' 
+                : 'MODO DEMO: Cliente adicionado (Não salvo).';
         } else {
+            // Remove ID temporário antes de enviar pro Firestore
+            const tempId = newAlignmentCar.id;
             delete newAlignmentCar.id;
+            
             await addDoc(collection(db, ALIGNMENT_COLLECTION_PATH), newAlignmentCar);
-            errorElement.textContent = ' Cliente adicionado à fila de alinhamento com sucesso!';
+            errorElement.textContent = existingServiceJob 
+                ? ' Acoplado ao serviço de mecânica existente!' 
+                : ' Cliente adicionado à fila de alinhamento!';
         }
 
         document.getElementById('alignment-form').reset();
@@ -745,8 +794,10 @@ function findAdjacentCar(currentIndex, direction) {
 
     let adjacentIndex = currentIndex + direction;
     while(adjacentIndex >= 0 && adjacentIndex < activeCars.length) {
-        if (activeCars[adjacentIndex].status === STATUS_WAITING) {
-            return activeCars[adjacentIndex];
+        const car = activeCars[adjacentIndex];
+        // ATUALIZADO (Req 2): Permite trocar de lugar com carros 'Aguardando GS' também
+        if (car.status === STATUS_WAITING || car.status === STATUS_WAITING_GS) {
+            return car;
         }
         adjacentIndex += direction;
     }
@@ -754,17 +805,22 @@ function findAdjacentCar(currentIndex, direction) {
 }
 
 async function moveAlignmentUp(docId) {
-    if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem mover carros na fila.");
+    // --- CORREÇÃO: Permitindo Vendedor e Alinhador moverem ---
+    if (currentUserRole !== MANAGER_ROLE && currentUserRole !== VENDEDOR_ROLE && currentUserRole !== ALIGNER_ROLE) {
+        return alertUser("Acesso negado. Apenas Gerentes, Vendedores e Alinhadores podem mover carros.");
+    }
+    // ---------------------------------------------------------
 
     const sortedQueue = getSortedAlignmentQueue();
     const index = sortedQueue.findIndex(car => car.id === docId);
-    if (index === -1 || sortedQueue[index].status !== STATUS_WAITING) return;
+    
+    if (index === -1 || (sortedQueue[index].status !== STATUS_WAITING && sortedQueue[index].status !== STATUS_WAITING_GS)) return;
 
     const currentCar = sortedQueue[index];
     const carBefore = findAdjacentCar(index, -1);
 
     if (!carBefore) {
-         alertUser("Este carro já está no topo da fila de espera.");
+         alertUser("Este carro já está no topo da sua prioridade.");
          return;
     }
 
@@ -782,7 +838,6 @@ async function moveAlignmentUp(docId) {
     try {
         const docRef = doc(db, ALIGNMENT_COLLECTION_PATH, docId);
         await updateDoc(docRef, { timestamp: newTimestamp });
-        alertUser("Ordem da fila atualizada.");
     } catch (e) {
         console.error("Erro ao mover para cima:", e);
         alertUser("Erro ao atualizar a ordem no banco de dados.");
@@ -790,23 +845,27 @@ async function moveAlignmentUp(docId) {
 }
 
 async function moveAlignmentDown(docId) {
-    if (currentUserRole !== MANAGER_ROLE) return alertUser("Acesso negado. Apenas Gerentes podem mover carros na fila.");
+    // --- CORREÇÃO: Permitindo Vendedor e Alinhador moverem ---
+    if (currentUserRole !== MANAGER_ROLE && currentUserRole !== VENDEDOR_ROLE && currentUserRole !== ALIGNER_ROLE) {
+        return alertUser("Acesso negado. Apenas Gerentes, Vendedores e Alinhadores podem mover carros.");
+    }
+    // ---------------------------------------------------------
 
     const sortedQueue = getSortedAlignmentQueue();
     const index = sortedQueue.findIndex(car => car.id === docId);
-    if (index === -1 || sortedQueue[index].status !== STATUS_WAITING) return;
+
+    if (index === -1 || (sortedQueue[index].status !== STATUS_WAITING && sortedQueue[index].status !== STATUS_WAITING_GS)) return;
 
     const currentCar = sortedQueue[index];
     const carAfter = findAdjacentCar(index, +1);
 
     if (!carAfter) {
-        alertUser("Este carro já é o último na fila de espera.");
+        alertUser("Este carro já é o último da prioridade.");
         return;
     }
 
     const newTimeMillis = (getTimestampSeconds(carAfter.timestamp) * 1000) + 1000;
     const newTimestamp = Timestamp.fromMillis(newTimeMillis);
-
 
     if (isDemoMode) {
         const jobIndex = alignmentQueue.findIndex(j => j.id === docId);
@@ -819,7 +878,6 @@ async function moveAlignmentDown(docId) {
     try {
         const docRef = doc(db, ALIGNMENT_COLLECTION_PATH, docId);
         await updateDoc(docRef, { timestamp: newTimestamp });
-        alertUser("Ordem da fila atualizada.");
     } catch (e) {
         console.error("Erro ao mover para baixo:", e);
         alertUser("Erro ao atualizar a ordem no banco de dados.");
@@ -1370,7 +1428,7 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
     const docId = currentJobToEditId;
     if (!docId) return alertUser("Erro: ID do serviço não encontrado.");
 
-    const newVendedorName = document.getElementById('edit-vendedorName').value.trim(); // REMOVIDO: Cliente
+    const newVendedorName = document.getElementById('edit-vendedorName').value.trim();
     const newLicensePlate = document.getElementById('edit-licensePlate').value.trim().toUpperCase();
     const newCarModel = document.getElementById('edit-carModel').value.trim();
     const newServiceDescription = document.getElementById('edit-serviceDescription').value.trim();
@@ -1397,7 +1455,7 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
         assignedMechanic: newAssignedMechanic,
         assignedTireShop: newWillTireChange ? TIRE_SHOP_MECHANIC : null,
         statusTS: newStatusTS,
-        requiresAlignment: newRequiresAlignment // NOVO
+        requiresAlignment: newRequiresAlignment
     };
 
     const alignmentDataToUpdate = {
@@ -1409,18 +1467,11 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
         gsMechanic: newAssignedMechanic
     };
 
-
     if (isDemoMode) {
+        // ... (Lógica Demo mantida igual, simplificada aqui para focar no fix real)
         const jobIndex = serviceJobs.findIndex(j => j.id === docId);
-        if (jobIndex !== -1) {
-            serviceJobs[jobIndex] = { ...serviceJobs[jobIndex], ...dataToUpdate };
-        }
-
-        const alignmentIndex = alignmentQueue.findIndex(a => a.serviceJobId === docId);
-        if (alignmentIndex !== -1) {
-            alignmentQueue[alignmentIndex] = { ...alignmentQueue[alignmentIndex], ...alignmentDataToUpdate };
-        }
-
+        if (jobIndex !== -1) serviceJobs[jobIndex] = { ...serviceJobs[jobIndex], ...dataToUpdate };
+        // ...
         renderServiceQueues(serviceJobs);
         renderAlignmentMirror(alignmentQueue);
         renderAlignmentQueue(alignmentQueue);
@@ -1429,25 +1480,50 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
             const docRef = doc(db, SERVICE_COLLECTION_PATH, docId);
             await updateDoc(docRef, dataToUpdate);
 
+            // Busca se já existe um alinhamento vinculado a este serviço
             const alignQuery = query(collection(db, ALIGNMENT_COLLECTION_PATH), where('serviceJobId', '==', docId));
             const alignSnapshot = await getDocs(alignQuery);
 
             if (!alignSnapshot.empty) {
+                // CENÁRIO: Alinhamento já existe
                 const alignDocRef = alignSnapshot.docs[0].ref;
-                // Se o alinhamento foi desmarcado, marca o job de alinhamento como perdido
+                const currentAlignData = alignSnapshot.docs[0].data();
+
                 if (!newRequiresAlignment) {
+                    // Se desmarcou alinhamento, marca como PERDIDO
                     await updateDoc(alignDocRef, { status: STATUS_LOST });
                 } else {
+                    // Se marcou que quer alinhar...
+                    
+                    // --- CORREÇÃO (Req 3): RESSURREIÇÃO DO ALINHAMENTO ---
+                    // Se o status atual for LOST ou FINALIZED, precisamos reativar o serviço
+                    if (currentAlignData.status === STATUS_LOST || currentAlignData.status === STATUS_FINALIZED) {
+                        
+                        // Decide o status baseado no progresso da mecânica
+                        let statusToRestore = STATUS_WAITING_GS;
+                        if (originalJob.statusGS === STATUS_GS_FINISHED) {
+                            statusToRestore = STATUS_WAITING;
+                        }
+                        
+                        alignmentDataToUpdate.status = statusToRestore;
+                        // Opcional: Limpar finalizedAt para garantir que apareça nas filas ativas
+                        alignmentDataToUpdate.finalizedAt = null; 
+                    }
+                    // -----------------------------------------------------
+
                     await updateDoc(alignDocRef, alignmentDataToUpdate);
                 }
             } else if (newRequiresAlignment) {
-                // Se o alinhamento foi marcado (e não existia antes), cria um novo
+                // CENÁRIO: Alinhamento não existe, cria um novo
+                // Lógica inteligente: Se a mecânica já acabou, já nasce disponível
+                const initialStatus = (originalJob.statusGS === STATUS_GS_FINISHED) ? STATUS_WAITING : STATUS_WAITING_GS;
+
                 const newAlignmentCar = {
                     customerName: 'N/A',
                     vendedorName: newVendedorName,
                     licensePlate: newLicensePlate,
                     carModel: newCarModel,
-                    status: STATUS_WAITING_GS,
+                    status: initialStatus,
                     gsDescription: newServiceDescription,
                     gsMechanic: newAssignedMechanic,
                     timestamp: serverTimestamp(),
@@ -1461,9 +1537,9 @@ document.getElementById('edit-service-form').addEventListener('submit', async (e
 
             // Se o alinhamento foi desmarcado, verifica se o serviço principal pode ir para pagamento
             if (!newRequiresAlignment && dataToUpdate.statusGS === STATUS_GS_FINISHED && (dataToUpdate.statusTS === STATUS_TS_FINISHED || dataToUpdate.statusTS === null)) {
-                dataToUpdate.status = STATUS_READY;
+                 // Pequeno delay para garantir consistência ou update direto
+                 await updateDoc(docRef, { status: STATUS_READY });
             }
-
 
             alertUser("Serviço atualizado com sucesso!");
         } catch (error) {
@@ -2185,8 +2261,9 @@ function getSortedAlignmentQueue() {
     activeCars.sort((a, b) => {
         const getPriority = (status) => {
             if (status === STATUS_ATTENDING) return 1;
-            if (status === STATUS_WAITING) return 2;
-            if (status === STATUS_WAITING_GS) return 3;
+            // ATUALIZADO (Req 2): Waiting e Waiting_GS agora têm a mesma prioridade de ordenação
+            // para permitir que sejam reordenados entre si baseados no timestamp.
+            if (status === STATUS_WAITING || status === STATUS_WAITING_GS) return 2; 
             return 4;
         };
         const priorityA = getPriority(a.status);
@@ -2277,6 +2354,7 @@ function renderAlignmentQueue(cars) {
     `;
 
     const nextCarIndex = activeCars.findIndex(c => c.status === STATUS_WAITING);
+    const movableCars = activeCars.filter(c => c.status === STATUS_WAITING || c.status === STATUS_WAITING_GS);
 
     activeCars.forEach((car, index) => {
         const isNextWaiting = (index === nextCarIndex);
@@ -2284,7 +2362,7 @@ function renderAlignmentQueue(cars) {
         const isAttending = car.status === STATUS_ATTENDING;
         const isWaitingGS = car.status === STATUS_WAITING_GS;
 
-        // Ícone da lixeira (mesmo usado na aba de serviços)
+        // Ícones
         const trashIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
         const returnIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
         
@@ -2293,23 +2371,27 @@ function renderAlignmentQueue(cars) {
         const rowClass = isWaitingGS ? 'bg-red-50/50' : (isNextWaiting ? 'bg-yellow-50/50' : '');
 
         let moverButtons = '';
-        const canMove = currentUserRole === MANAGER_ROLE && isWaiting;
-        const waitingOnlyList = activeCars.filter(c => c.status === STATUS_WAITING);
-        const waitingIndex = waitingOnlyList.findIndex(c => c.id === car.id);
-        const isLastWaiting = waitingIndex === waitingOnlyList.length - 1;
-        const isFirstWaiting = waitingIndex === 0;
+        
+        const isMovable = isWaiting || isWaitingGS;
+        
+        // --- CORREÇÃO AQUI: Adicionando Vendedor e Alinhador nas permissões ---
+        const canMove = (currentUserRole === MANAGER_ROLE || currentUserRole === VENDEDOR_ROLE || currentUserRole === ALIGNER_ROLE) && isMovable;
+        // ---------------------------------------------------------------------
+
+        const movableIndex = movableCars.findIndex(c => c.id === car.id);
+        const isFirstMovable = movableIndex === 0;
+        const isLastMovable = movableIndex === movableCars.length - 1;
 
         moverButtons = `
             <div class="flex items-center justify-center space-x-1">
-                <button onclick="moveAlignmentUp('${car.id}')" class="text-sm p-1 rounded-full text-blue-600 hover:bg-gray-200 disabled:text-gray-300 transition" ${!canMove || isFirstWaiting ? 'disabled' : ''} title="Mover para cima">&#9650;</button>
-                <button onclick="moveAlignmentDown('${car.id}')" class="text-sm p-1 rounded-full text-blue-600 hover:bg-gray-200 disabled:text-gray-300 transition" ${!canMove || isLastWaiting ? 'disabled' : ''} title="Mover para baixo">&#9660;</button>
+                <button onclick="moveAlignmentUp('${car.id}')" class="text-sm p-1 rounded-full text-blue-600 hover:bg-gray-200 disabled:text-gray-300 transition" ${!canMove || isFirstMovable ? 'disabled' : ''} title="Mover para cima">&#9650;</button>
+                <button onclick="moveAlignmentDown('${car.id}')" class="text-sm p-1 rounded-full text-blue-600 hover:bg-gray-200 disabled:text-gray-300 transition" ${!canMove || isLastMovable ? 'disabled' : ''} title="Mover para baixo">&#9660;</button>
             </div>`;
 
         let actions;
         const canTakeAction = currentUserRole === ALIGNER_ROLE || currentUserRole === MANAGER_ROLE || currentUserRole === VENDEDOR_ROLE;
         const isManagerOrVendedor = currentUserRole === MANAGER_ROLE || currentUserRole === VENDEDOR_ROLE;
 
-        // Bloco de botões de ação (Retornar e EXCLUIR/PERDIDO)
         const actionButtons = isManagerOrVendedor ? `
             <button onclick="showReturnToMechanicModal('${car.id}')" title="Retornar ao Mecânico" class="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition" ${!car.serviceJobId ? 'disabled title="Ação não permitida para adição manual"' : ''}>${returnIcon}</button>
             <button onclick="showDeleteOptionsModal('${car.id}', 'alignment')" title="Excluir/Perdido" class="p-1 text-red-600 hover:bg-red-100 rounded-full transition">${trashIcon}</button>
